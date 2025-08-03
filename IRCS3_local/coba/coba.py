@@ -1,0 +1,804 @@
+import pandas as pd
+import re
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from openpyxl import load_workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+import warnings
+warnings.filterwarnings('ignore')
+
+def make_columns_case_insensitive(df):
+    """Make DataFrame column names case-insensitive by converting to lowercase"""
+    if df.empty:
+        return df, {}
+    
+    # Create a mapping of lowercase to original column names
+    column_mapping = {col.lower(): col for col in df.columns}
+    
+    # Rename columns to lowercase
+    df_lower = df.copy()
+    df_lower.columns = df_lower.columns.str.lower()
+    
+    return df_lower, column_mapping
+
+def parse_multi_values(value):
+    """Parse comma/slash separated values"""
+    if pd.isna(value) or not value:
+        return []
+    parts = re.split(r'[,/]', str(value))
+    return [p.strip() for p in parts if p.strip()]
+
+def combine_filters(*args):
+    """Combine multiple filter lists"""
+    combined = []
+    for arg in args:
+        combined.extend(arg)
+    return combined
+
+def apply_filters(df, params):
+    """Apply filters to dataframe based on parameters with case-insensitive column handling"""
+    if df.empty:
+        return df.copy()
+    
+    # Make dataframe case-insensitive
+    df_processed, column_mapping = make_columns_case_insensitive(df)
+    
+    produk_tertentu = combine_filters(
+        parse_multi_values(params.get('only_channel', '')),
+        parse_multi_values(params.get('only_currency', '')),
+        parse_multi_values(params.get('only_portfolio', '')),
+    )
+    kecuali_produk = combine_filters(
+        parse_multi_values(params.get('exclude_channel', '')),
+        parse_multi_values(params.get('exclude_currency', '')),
+        parse_multi_values(params.get('exclude_portfolio', '')),
+    )
+    only_cohort_list = parse_multi_values(params.get('only_cohort', ''))
+    only_period_list = parse_multi_values(params.get('only_period', ''))
+    
+    tahun_tertentu = []
+    if only_cohort_list and only_period_list:
+        for c in only_cohort_list:
+            for p in only_period_list:
+                tahun_tertentu.append(f"{c}_{p}")
+    
+    exclude_cohort_list = parse_multi_values(params.get('exclude_cohort', ''))
+    exclude_period_list = parse_multi_values(params.get('exclude_period', ''))
+    
+    kecuali_tahun = []
+    if exclude_cohort_list and exclude_period_list:
+        for c in exclude_cohort_list:
+            for p in exclude_period_list:
+                kecuali_tahun.append(f"{c}_{p}")
+
+    mask = pd.Series(True, index=df_processed.index)
+
+    # Use lowercase 'goc' column
+    goc_col = 'goc'
+    if goc_col not in df_processed.columns:
+        print(f"Warning: 'goc' column not found. Available columns: {df_processed.columns.tolist()}")
+        return df.copy()
+
+    if kecuali_tahun:
+        pattern_exc = '|'.join(map(re.escape, kecuali_tahun))
+        mask &= ~df_processed[goc_col].astype(str).str.contains(pattern_exc, case=False, na=False)
+    
+    if tahun_tertentu:
+        pattern_inc = '|'.join(map(re.escape, tahun_tertentu))
+        mask &= df_processed[goc_col].astype(str).str.contains(pattern_inc, case=False, na=False)
+    
+    if produk_tertentu:
+        produk_mask = pd.Series(False, index=df_processed.index)
+        for produk in produk_tertentu:
+            produk_mask |= df_processed[goc_col].astype(str).str.contains(re.escape(produk), case=False, na=False)
+        mask &= produk_mask
+    
+    if kecuali_produk:
+        for produk_exc in kecuali_produk:
+            mask &= ~df_processed[goc_col].astype(str).str.contains(re.escape(produk_exc), case=False, na=False)
+
+    # Apply mask and restore original column names
+    filtered_df = df_processed[mask].copy()
+    
+    # Restore original column names
+    original_columns = []
+    for col in filtered_df.columns:
+        if col in column_mapping.values():
+            original_columns.append(col)
+        else:
+            # Find original name
+            original_col = column_mapping.get(col.lower(), col)
+            original_columns.append(original_col)
+    
+    filtered_df.columns = original_columns
+    
+    return filtered_df
+
+def filter_goc_by_code(df, code):
+    """Filter dataframe by GOC code with case-insensitive column handling"""
+    if df.empty:
+        return df
+    
+    df_processed, _ = make_columns_case_insensitive(df)
+    goc_col = 'goc'
+    
+    if goc_col not in df_processed.columns:
+        return df
+        
+    tokens = [k for k in code.split('_') if k]
+    mask = df_processed[goc_col].apply(lambda x: all(token.lower() in str(x).lower() for token in tokens))
+    
+    return df[mask].copy()
+
+def exclude_goc_by_code(df, code):
+    """Exclude dataframe by GOC code with case-insensitive column handling"""
+    if df.empty:
+        return df
+    
+    df_processed, _ = make_columns_case_insensitive(df)
+    goc_col = 'goc'
+    
+    if goc_col not in df_processed.columns:
+        return df
+        
+    tokens = [k for k in code.split('_') if k]
+    mask = df_processed[goc_col].apply(lambda x: all(token.lower() in str(x).lower() for token in tokens))
+    
+    return df[~mask].copy()
+
+def clean_numeric_column(df, column_name):
+    """Clean and convert column to numeric with case-insensitive column handling"""
+    df_processed, _ = make_columns_case_insensitive(df)
+    
+    # Check for column in lowercase
+    column_lower = column_name.lower()
+    
+    if column_lower in df_processed.columns:
+        # Find original column name in original df
+        original_col = None
+        for col in df.columns:
+            if col.lower() == column_lower:
+                original_col = col
+                break
+        
+        if original_col:
+            df[original_col] = pd.to_numeric(
+                df[original_col].astype(str).str.replace(",", ".", regex=False),
+                errors="coerce"
+            )
+            df[original_col] = df[original_col].fillna(0)
+    
+    return df
+
+def load_excel_sheet_safely(file_path, sheet_name, required_columns=None):
+    """Safely load Excel sheet with error handling and case-insensitive column processing"""
+    try:
+        if not file_path or not os.path.exists(file_path):
+            print(f"Warning: File not found: {file_path}")
+            return pd.DataFrame()
+        
+        df = pd.read_excel(file_path, sheet_name=sheet_name, engine='openpyxl')
+        
+        if required_columns:
+            # Make both df columns and required columns case-insensitive for comparison
+            df_columns_lower = [col.lower() for col in df.columns]
+            required_lower = [col.lower() for col in required_columns]
+            
+            # Check if required columns exist (case-insensitive)
+            missing_cols = [col for col in required_lower if col not in df_columns_lower]
+            if missing_cols:
+                print(f"Warning: Missing columns {missing_cols} in {sheet_name}")
+                return pd.DataFrame()
+            
+            # Select columns (preserve original case in result)
+            selected_columns = []
+            for req_col in required_columns:
+                for orig_col in df.columns:
+                    if orig_col.lower() == req_col.lower():
+                        selected_columns.append(orig_col)
+                        break
+            
+            df = df[selected_columns]
+            
+            # Standardize column names to lowercase for processing
+            df.columns = [col.lower() for col in df.columns]
+        
+        return df
+    except Exception as e:
+        print(f"Error loading {sheet_name} from {file_path}: {str(e)}")
+        return pd.DataFrame()
+
+def run_trad(params):
+    """Main function for Traditional products processing with case-insensitive handling"""
+    try:
+        path_dv = params.get('path_dv', '')
+        path_rafm = params.get('path_rafm', '')
+        
+        if not path_dv or not os.path.isfile(path_dv):
+            return {"error": f"File DV tidak ditemukan atau path kosong: {path_dv}"}
+        if not path_rafm or not os.path.isfile(path_rafm):
+            return {"error": f"File RAFM tidak ditemukan atau path kosong: {path_rafm}"}
+
+        # Load DV data
+        try:
+            dv_trad = pd.read_csv(path_dv)
+        except:
+            try:
+                dv_trad = pd.read_excel(path_dv, engine='openpyxl')
+            except Exception as e:
+                return {"error": f"Gagal membaca file DV: {str(e)}"}
+        
+        # Make columns case-insensitive for processing
+        dv_trad_processed, dv_column_mapping = make_columns_case_insensitive(dv_trad)
+        
+        # Apply filters
+        dv_trad_total = apply_filters(dv_trad, params)
+        
+        # Drop unnecessary columns (case-insensitive)
+        columns_to_drop = ['product_group', 'pre_ann', 'loan_sa']
+        columns_to_drop_lower = [col.lower() for col in columns_to_drop]
+        
+        existing_columns_to_drop = []
+        for col in dv_trad_total.columns:
+            if col.lower() in columns_to_drop_lower:
+                existing_columns_to_drop.append(col)
+        
+        dv_trad_total = dv_trad_total.drop(columns=existing_columns_to_drop, errors='ignore')
+
+        # Process GOC column (find the correct case)
+        goc_column = None
+        for col in dv_trad_total.columns:
+            if col.lower() == 'goc':
+                goc_column = col
+                break
+        
+        if not goc_column:
+            return {"error": "GOC column not found in DV data"}
+
+        def get_sortir(params):
+            def sortir(name):
+                if not isinstance(name, str) or not name:
+                    return ''
+                if '____' in name:
+                    double_underscore_parts = name.split('____')
+                    if len(double_underscore_parts) > 1:
+                        after_double = double_underscore_parts[-1]
+                        after_parts = [p for p in after_double.split('_') if p]
+                        year_index_after = -1
+                        for i, part in enumerate(after_parts):
+                            if re.fullmatch(r'\d{4}', part):
+                                year_index_after = i
+                                break
+                        # Check if Q1 in filters
+                        only_cohort = parse_multi_values(params.get('only_cohort', ''))
+                        only_period = parse_multi_values(params.get('only_period', ''))
+                        tahun_tertentu = []
+                        for c in only_cohort:
+                            for p in only_period:
+                                tahun_tertentu.append(f"{c}_{p}")
+                        
+                        if tahun_tertentu and any('Q1' in t.upper() for t in tahun_tertentu):
+                            return after_double
+                        if year_index_after == -1:
+                            return ''
+                        return '_'.join(after_parts[:year_index_after + 1])
+                
+                parts = [p for p in name.split('_') if p]
+                year_index = -1
+                for i, part in enumerate(parts):
+                    if re.fullmatch(r'\d{4}', part):
+                        year_index = i
+                        break
+                start_index = next((i for i, part in enumerate(parts) if part == 'AG'), 2)
+                
+                # Check if Q1 in filters
+                only_cohort = parse_multi_values(params.get('only_cohort', ''))
+                only_period = parse_multi_values(params.get('only_period', ''))
+                tahun_tertentu = []
+                for c in only_cohort:
+                    for p in only_period:
+                        tahun_tertentu.append(f"{c}_{p}")
+                
+                if tahun_tertentu and any('Q1' in t.upper() for t in tahun_tertentu):
+                    return '_'.join(parts[start_index:])
+                if year_index == -1:
+                    return ''
+                return '_'.join(parts[start_index:year_index + 1])
+            return sortir
+
+        sortir_func = get_sortir(params)
+        dv_trad_total[goc_column] = dv_trad_total[goc_column].apply(sortir_func)
+        dv_trad_total[goc_column] = dv_trad_total[goc_column].apply(lambda x: 'H_IDR_NO_2025' if x == 'IDR_NO_2025' else x)
+
+        # Clean numeric columns (case-insensitive)
+        dv_trad_total = clean_numeric_column(dv_trad_total, 'pol_num')
+        dv_trad_total = clean_numeric_column(dv_trad_total, 'sum_assd')
+
+        # Group by GOC
+        dv_trad_total = dv_trad_total.groupby([goc_column], as_index=False).sum(numeric_only=True)
+
+        # Apply USD conversion
+        usd_rate = float(params.get('usdidr', params.get('USDIDR', 1.0)))
+        
+        # Find sum_assd column
+        sum_assd_column = None
+        for col in dv_trad_total.columns:
+            if col.lower() == 'sum_assd':
+                sum_assd_column = col
+                break
+        
+        if sum_assd_column:
+            usd_mask = dv_trad_total[goc_column].astype(str).str.contains("USD", case=False, na=False)
+            dv_trad_total.loc[usd_mask, sum_assd_column] = dv_trad_total.loc[usd_mask, sum_assd_column] * usd_rate
+
+        # Load RAFM data with case-insensitive column handling
+        run_rafm_idr = load_excel_sheet_safely(path_rafm, 'extraction_IDR', ['GOC', 'period', 'cov_units', 'pol_b'])
+        run_rafm_usd = load_excel_sheet_safely(path_rafm, 'extraction_USD', ['GOC', 'period', 'cov_units', 'pol_b'])
+        
+        # Filter period = 0
+        for df_rafm in [run_rafm_idr, run_rafm_usd]:
+            if not df_rafm.empty and 'period' in df_rafm.columns:
+                df_rafm = df_rafm[df_rafm['period'].astype(str) == '0']
+                df_rafm = df_rafm.drop(columns=["period"], errors='ignore')
+
+        # Filter period = 0 and drop period column
+        if not run_rafm_idr.empty:
+            run_rafm_idr = run_rafm_idr[run_rafm_idr['period'].astype(str) == '0']
+            run_rafm_idr = run_rafm_idr.drop(columns=["period"])
+        
+        if not run_rafm_usd.empty:
+            run_rafm_usd = run_rafm_usd[run_rafm_usd['period'].astype(str) == '0']
+            run_rafm_usd = run_rafm_usd.drop(columns=["period"])
+
+        # Combine RAFM data
+        run_rafm_only = pd.concat([run_rafm_idr, run_rafm_usd], ignore_index=True)
+        
+        if not run_rafm_only.empty:
+            run_rafm_only = clean_numeric_column(run_rafm_only, 'pol_b')
+            run_rafm_only = clean_numeric_column(run_rafm_only, 'cov_units')
+            
+            # Rename GOC to goc to match DV data
+            goc_col_rafm = None
+            for col in run_rafm_only.columns:
+                if col.lower() == 'goc':
+                    goc_col_rafm = col
+                    break
+            
+            if goc_col_rafm:
+                run_rafm = run_rafm_only.rename(columns={goc_col_rafm: goc_column})
+            else:
+                run_rafm = run_rafm_only.copy()
+            
+            merged = pd.merge(dv_trad_total, run_rafm, on=goc_column, how="outer", suffixes=("_trad", "_rafm"))
+        else:
+            merged = dv_trad_total.copy()
+            merged['pol_b'] = 0
+            merged['cov_units'] = 0
+
+        merged.fillna(0, inplace=True)
+        
+        # Find column names for calculations
+        pol_num_col = None
+        sum_assd_col = None
+        for col in merged.columns:
+            if col.lower().startswith('pol_num'):
+                pol_num_col = col
+            elif col.lower().startswith('sum_assd'):
+                sum_assd_col = col
+        
+        if pol_num_col and 'pol_b' in merged.columns:
+            merged['diff_policies'] = merged[pol_num_col] - merged['pol_b']
+        if sum_assd_col and 'cov_units' in merged.columns:
+            merged['diff_sa'] = merged[sum_assd_col] - merged['cov_units']
+
+        # Generate tables
+        tabel_total_l = filter_goc_by_code(merged, 'l')
+        tabel_total_l = tabel_total_l[~tabel_total_l[goc_column].astype(str).str.contains("%", case=False, na=False)]
+
+        # Summary calculations with safe column access
+        def safe_sum(df, col_name):
+            for col in df.columns:
+                if col.lower() == col_name.lower():
+                    return df[col].sum()
+            return 0
+
+        summary = pd.DataFrame({
+            '': ['Total Trad All from DV', 'Grand Total Summary', 'Check'],
+            'DV_Policies': [
+                safe_sum(dv_trad_total, 'pol_num'),
+                safe_sum(tabel_total_l, 'pol_num'),
+                safe_sum(dv_trad_total, 'pol_num') - safe_sum(tabel_total_l, 'pol_num')
+            ],
+            'DV_SA': [
+                safe_sum(dv_trad_total, 'sum_assd'),
+                safe_sum(tabel_total_l, 'sum_assd'),
+                safe_sum(dv_trad_total, 'sum_assd') - safe_sum(tabel_total_l, 'sum_assd')
+            ],
+            'RAFM_Policies': [
+                safe_sum(merged, 'pol_b'),
+                safe_sum(tabel_total_l, 'pol_b'),
+                safe_sum(merged, 'pol_b') - safe_sum(tabel_total_l, 'pol_b')
+            ],
+            'RAFM_SA': [
+                safe_sum(merged, 'cov_units'),
+                safe_sum(tabel_total_l, 'cov_units'),
+                safe_sum(merged, 'cov_units') - safe_sum(tabel_total_l, 'cov_units')
+            ],
+            'Diff_Policies': [
+                safe_sum(dv_trad_total, 'pol_num') - safe_sum(merged, 'pol_b'),
+                safe_sum(tabel_total_l, 'pol_num') - safe_sum(tabel_total_l, 'pol_b'),
+                (safe_sum(dv_trad_total, 'pol_num') - safe_sum(merged, 'pol_b')) - 
+                (safe_sum(tabel_total_l, 'pol_num') - safe_sum(tabel_total_l, 'pol_b'))
+            ],
+            'Diff_SA': [
+                safe_sum(dv_trad_total, 'sum_assd') - safe_sum(merged, 'cov_units'),
+                safe_sum(tabel_total_l, 'sum_assd') - safe_sum(tabel_total_l, 'cov_units'),
+                (safe_sum(dv_trad_total, 'sum_assd') - safe_sum(merged, 'cov_units')) - 
+                (safe_sum(tabel_total_l, 'sum_assd') - safe_sum(tabel_total_l, 'cov_units'))
+            ]
+        })
+
+        # Generate all tables (always active)
+        # TABEL 2: CC%
+        tabel_2 = filter_goc_by_code(merged, 'CC%')
+        summary_tabel_2 = None
+        if not tabel_2.empty:
+            summary_tabel_2 = pd.DataFrame([{
+                "DV": safe_sum(tabel_2, 'pol_num'),
+                "DV_SA": safe_sum(tabel_2, 'sum_assd'),
+                "RAFM_Output": safe_sum(tabel_2, 'pol_b'),
+                "RAFM_SA": safe_sum(tabel_2, 'cov_units'),
+                "Diff_Policies": safe_sum(tabel_2, 'pol_num') - safe_sum(tabel_2, 'pol_b'),
+                "Diff_SA": safe_sum(tabel_2, 'sum_assd') - safe_sum(tabel_2, 'cov_units')
+            }])
+
+        # TABEL 3: H_IDR_NO
+        tabel_3 = filter_goc_by_code(merged, 'H_IDR_NO')
+        summary_tabel_3 = None
+        if not tabel_3.empty:
+            tabel_3_processed = tabel_3.copy()
+            tabel_3_processed[goc_column] = tabel_3_processed[goc_column].apply(
+                lambda x: '_'.join(str(x).split('_')[0:4]) if str(x).startswith('H_IDR_NO') else x
+            )
+            tabel_3_processed = tabel_3_processed.groupby([goc_column], as_index=False).sum(numeric_only=True)
+            
+            summary_tabel_3 = pd.DataFrame([{
+                "DV": safe_sum(tabel_3_processed, 'pol_num'),
+                "DV_SA": safe_sum(tabel_3_processed, 'sum_assd'),
+                "RAFM_Output": safe_sum(tabel_3_processed, 'pol_b'),
+                "RAFM_SA": safe_sum(tabel_3_processed, 'cov_units'),
+                "Diff_Policies": safe_sum(tabel_3_processed, 'pol_num') - safe_sum(tabel_3_processed, 'pol_b'),
+                "Diff_SA": safe_sum(tabel_3_processed, 'sum_assd') - safe_sum(tabel_3_processed, 'cov_units')
+            }])
+            tabel_3 = tabel_3_processed
+
+        # TABEL 4: YR
+        tabel_4 = filter_goc_by_code(merged, 'YR')
+        summary_tabel_4 = None
+        if not tabel_4.empty:
+            tabel_4_processed = tabel_4.copy()
+            tabel_4_processed[goc_column] = tabel_4_processed[goc_column].apply(
+                lambda x: '_'.join(str(x).split('_')[1:5])
+            )
+            tabel_4_processed = tabel_4_processed.groupby([goc_column], as_index=False).sum(numeric_only=True)
+            
+            summary_tabel_4 = pd.DataFrame([{
+                "DV": safe_sum(tabel_4_processed, 'pol_num'),
+                "DV_SA": safe_sum(tabel_4_processed, 'sum_assd'),
+                "RAFM_Output": safe_sum(tabel_4_processed, 'pol_b'),
+                "RAFM_SA": safe_sum(tabel_4_processed, 'cov_units'),
+                "Diff_Policies": safe_sum(tabel_4_processed, 'pol_num') - safe_sum(tabel_4_processed, 'pol_b'),
+                "Diff_SA": safe_sum(tabel_4_processed, 'sum_assd') - safe_sum(tabel_4_processed, 'cov_units')
+            }])
+            tabel_4 = tabel_4_processed
+
+        # TABEL 5: _C_
+        tabel_5 = filter_goc_by_code(merged, '_C_')
+        summary_tabel_5 = None
+        if not tabel_5.empty:
+            tabel_5_processed = tabel_5.copy()
+            tabel_5_processed[goc_column] = tabel_5_processed[goc_column].apply(
+                lambda x: '_'.join(str(x).split('_')[1:5])
+            )
+            tabel_5_processed = tabel_5_processed.groupby([goc_column], as_index=False).sum(numeric_only=True)
+            
+            summary_tabel_5 = pd.DataFrame([{
+                "DV": safe_sum(tabel_5_processed, 'pol_num'),
+                "DV_SA": safe_sum(tabel_5_processed, 'sum_assd'),
+                "RAFM_Output": safe_sum(tabel_5_processed, 'pol_b'),
+                "RAFM_SA": safe_sum(tabel_5_processed, 'cov_units'),
+                "Diff_Policies": safe_sum(tabel_5_processed, 'pol_num') - safe_sum(tabel_5_processed, 'pol_b'),
+                "Diff_SA": safe_sum(tabel_5_processed, 'sum_assd') - safe_sum(tabel_5_processed, 'cov_units')
+            }])
+            tabel_5 = tabel_5_processed
+
+        return {
+            'product_type': 'TRAD',
+            'tabel_total': tabel_total_l,
+            'tabel_2': tabel_2,
+            'tabel_3': tabel_3,
+            'tabel_4': tabel_4,
+            'tabel_5': tabel_5,
+            'summary_total': summary,
+            'summary_tabel_2': summary_tabel_2,
+            'summary_tabel_3': summary_tabel_3,
+            'summary_tabel_4': summary_tabel_4,
+            'summary_tabel_5': summary_tabel_5,
+            'run_name': params.get('run_name', params.get('run', ''))
+        }
+
+    except Exception as e:
+        return {"error": f"Error in run_trad: {str(e)}"}
+
+def run_ul(params):
+    """Main function for Unit Linked products processing with case-insensitive handling"""
+    try:
+        path_dv = params.get('path_dv', '')
+        path_rafm = params.get('path_rafm', '')
+        path_uvsg = params.get('path_uvsg', '')  # Optional path
+        
+        if not path_dv or not os.path.isfile(path_dv):
+            return {"error": f"File DV tidak ditemukan atau path kosong: {path_dv}"}
+        if not path_rafm or not os.path.isfile(path_rafm):
+            return {"error": f"File RAFM tidak ditemukan atau path kosong: {path_rafm}"}
+
+        # Load DV data
+        try:
+            dv_ul = pd.read_excel(path_dv, sheet_name=0, engine='openpyxl')  # Use first sheet
+        except Exception as e:
+            return {"error": f"Gagal membaca file DV: {str(e)}"}
+        
+        if dv_ul.empty:
+            return {"error": "File DV kosong atau tidak dapat dibaca"}
+        
+        dv_ul_total = apply_filters(dv_ul, params)
+        
+        # Drop unnecessary columns (case-insensitive)
+        columns_to_drop = ['product_group', 'pre_ann', 'sum_assur']
+        columns_to_drop_lower = [col.lower() for col in columns_to_drop]
+        
+        existing_columns_to_drop = []
+        for col in dv_ul_total.columns:
+            if col.lower() in columns_to_drop_lower:
+                existing_columns_to_drop.append(col)
+        
+        dv_ul_total = dv_ul_total.drop(columns=existing_columns_to_drop, errors='ignore')
+
+        # Find GOC column
+        goc_column = None
+        for col in dv_ul_total.columns:
+            if col.lower() == 'goc':
+                goc_column = col
+                break
+        
+        if not goc_column:
+            return {"error": "GOC column not found in DV data"}
+
+        # Process GOC
+        def sortir(name):
+            parts = [p for p in str(name).split('_') if p]
+            year_index = -1
+            for i, part in enumerate(parts):
+                if re.fullmatch(r'\d{4}', part):
+                    year_index = i
+                    break
+            if year_index == -1:
+                return ''
+            start_index = None
+            for i, part in enumerate(parts):
+                if part == 'AG':
+                    start_index = i
+                    break
+            if start_index is None:
+                start_index = 2
+            return '_'.join(parts[start_index:year_index+1])
+
+        dv_ul_total[goc_column] = dv_ul_total[goc_column].apply(sortir)
+        dv_ul_total = clean_numeric_column(dv_ul_total, 'total_fund')
+        dv_ul_total = dv_ul_total.groupby([goc_column], as_index=False).sum(numeric_only=True)
+
+        # Apply USD conversion
+        usd_rate = float(params.get('usdidr', params.get('USDIDR', 1.0)))
+        
+        # Find total_fund column
+        total_fund_column = None
+        for col in dv_ul_total.columns:
+            if col.lower() == 'total_fund':
+                total_fund_column = col
+                break
+        
+        if total_fund_column:
+            usd_mask = dv_ul_total[goc_column].astype(str).str.contains("USD", case=False, na=False)
+            dv_ul_total.loc[usd_mask, total_fund_column] = dv_ul_total.loc[usd_mask, total_fund_column] * usd_rate
+
+        # Load RAFM data with case-insensitive column handling
+        run_rafm_idr = load_excel_sheet_safely(path_rafm, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
+        run_rafm_usd = load_excel_sheet_safely(path_rafm, 'extraction_USD', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
+        
+        # Filter period = 0
+        if not run_rafm_idr.empty:
+            run_rafm_idr = run_rafm_idr[run_rafm_idr['period'].astype(str) == '0']
+            run_rafm_idr = run_rafm_idr.drop(columns=["period"])
+        
+        if not run_rafm_usd.empty:
+            run_rafm_usd = run_rafm_usd[run_rafm_usd['period'].astype(str) == '0']
+            run_rafm_usd = run_rafm_usd.drop(columns=["period"])
+
+        # Combine RAFM data
+        run_rafm_only = pd.concat([run_rafm_idr, run_rafm_usd], ignore_index=True)
+        if not run_rafm_only.empty:
+            run_rafm_only = clean_numeric_column(run_rafm_only, 'pol_b')
+            run_rafm_only = clean_numeric_column(run_rafm_only, 'RV_AV_IF')
+
+        # Exclude GS from RAFM
+        goc_col_rafm = None
+        for col in run_rafm_only.columns:
+            if col.lower() == 'goc':
+                goc_col_rafm = col
+                break
+        
+        if goc_col_rafm:
+            run_rafm_no_gs = run_rafm_only[~run_rafm_only[goc_col_rafm].astype(str).str.contains('GS', case=False, na=False)]
+        else:
+            run_rafm_no_gs = run_rafm_only.copy()
+
+        # Load UVSG data if provided (OPTIONAL)
+        run_uvsg = pd.DataFrame()
+        if path_uvsg and os.path.isfile(path_uvsg):
+            print(f"Loading UVSG file: {path_uvsg}")
+            run_uvsg_idr = load_excel_sheet_safely(path_uvsg, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'rv_av_if'])
+            run_uvsg_usd = load_excel_sheet_safely(path_uvsg, 'extraction_USD', ['GOC', 'period', 'pol_b', 'rv_av_if'])
+            
+            if not run_uvsg_idr.empty:
+                run_uvsg_idr = run_uvsg_idr[run_uvsg_idr['period'].astype(str) == '0']
+                run_uvsg_idr = run_uvsg_idr.drop(columns=["period"])
+            
+            if not run_uvsg_usd.empty:
+                run_uvsg_usd = run_uvsg_usd[run_uvsg_usd['period'].astype(str) == '0']
+                run_uvsg_usd = run_uvsg_usd.drop(columns=["period"])
+
+            run_uvsg = pd.concat([run_uvsg_idr, run_uvsg_usd], ignore_index=True)
+            if not run_uvsg.empty:
+                run_uvsg = clean_numeric_column(run_uvsg, 'pol_b')
+                run_uvsg = clean_numeric_column(run_uvsg, 'rv_av_if')
+                # Standardize column name
+                if 'rv_av_if' in run_uvsg.columns:
+                    run_uvsg = run_uvsg.rename(columns={'rv_av_if': 'rv_av_if'})
+        else:
+            print("UVSG file not provided or not found - skipping UVSG processing")
+
+        # Combine RAFM and UVSG
+        run_rafm = pd.concat([run_rafm_no_gs, run_uvsg], ignore_index=True)
+        
+        # Rename GOC column to match DV data
+        if goc_col_rafm and goc_col_rafm in run_rafm.columns:
+            run_rafm = run_rafm.rename(columns={goc_col_rafm: goc_column})
+
+        # Merge data
+        merged = pd.merge(dv_ul_total, run_rafm, on=goc_column, how="outer", suffixes=("_uv_total", "_run_rafm"))
+        merged.fillna(0, inplace=True)
+
+        # Calculate differences with safe column access
+        def safe_get_col(df, col_name):
+            for col in df.columns:
+                if col.lower() == col_name.lower():
+                    return col
+            return None
+
+        pol_num_col = safe_get_col(merged, 'pol_num')
+        total_fund_col = safe_get_col(merged, 'total_fund')
+        pol_b_col = safe_get_col(merged, 'pol_b')
+        rv_av_if_col = safe_get_col(merged, 'RV_AV_IF')
+
+        if pol_num_col and pol_b_col:
+            merged['diff_policies'] = merged[pol_num_col] - merged[pol_b_col]
+        else:
+            merged['diff_policies'] = 0
+
+        if total_fund_col and rv_av_if_col:
+            merged['diff_sa'] = merged[total_fund_col] - merged[rv_av_if_col]
+        else:
+            merged['diff_sa'] = 0
+
+        # Generate tables
+        tabel_total_l = exclude_goc_by_code(merged, 'gs')
+
+        # Safe sum function
+        def safe_sum(df, col_name):
+            for col in df.columns:
+                if col.lower() == col_name.lower():
+                    return df[col].sum()
+            return 0
+
+        # Summary
+        summary = pd.DataFrame({
+            '': ['Total UL All from DV', 'Grand Total Summary', 'Check'],
+            'DV # of Policies': [
+                safe_sum(dv_ul_total, 'pol_num'),
+                safe_sum(tabel_total_l, 'pol_num'),
+                safe_sum(dv_ul_total, 'pol_num') - safe_sum(tabel_total_l, 'pol_num')
+            ],
+            'DV Fund Value': [
+                safe_sum(dv_ul_total, 'total_fund'),
+                safe_sum(tabel_total_l, 'total_fund'),
+                safe_sum(dv_ul_total, 'total_fund') - safe_sum(tabel_total_l, 'total_fund')
+            ],
+            'RAFM # of Policies': [
+                safe_sum(run_rafm, 'pol_b'),
+                safe_sum(tabel_total_l, 'pol_b'),
+                safe_sum(run_rafm, 'pol_b') - safe_sum(tabel_total_l, 'pol_b')
+            ],
+            'RAFM Fund Value': [
+                safe_sum(run_rafm, 'RV_AV_IF'),
+                safe_sum(tabel_total_l, 'RV_AV_IF'),
+                safe_sum(run_rafm, 'RV_AV_IF') - safe_sum(tabel_total_l, 'RV_AV_IF')
+            ],
+            'Diff # of Policies': [
+                safe_sum(dv_ul_total, 'pol_num') - safe_sum(run_rafm, 'pol_b'),
+                safe_sum(tabel_total_l, 'pol_num') - safe_sum(tabel_total_l, 'pol_b'),
+                (safe_sum(dv_ul_total, 'pol_num') - safe_sum(run_rafm, 'pol_b')) -
+                (safe_sum(tabel_total_l, 'pol_num') - safe_sum(tabel_total_l, 'pol_b'))
+            ],
+            'Diff Fund Value': [
+                safe_sum(dv_ul_total, 'total_fund') - safe_sum(run_rafm, 'RV_AV_IF'),
+                safe_sum(tabel_total_l, 'total_fund') - safe_sum(tabel_total_l, 'RV_AV_IF'),
+                (safe_sum(dv_ul_total, 'total_fund') - safe_sum(run_rafm, 'RV_AV_IF')) -
+                (safe_sum(tabel_total_l, 'total_fund') - safe_sum(tabel_total_l, 'RV_AV_IF'))
+            ]
+        })
+
+        # TABEL 2: AG_IDR_SH
+        tabel_2 = filter_goc_by_code(merged, 'AG_IDR_SH')
+        summary_tabel_2 = None
+        if not tabel_2.empty:
+            summary_tabel_2 = pd.DataFrame([{
+                "DV": safe_sum(tabel_2, 'pol_num'),
+                "DV Fund": safe_sum(tabel_2, 'total_fund'),
+                "RAFM Output": safe_sum(tabel_2, 'pol_b'),
+                "RAFM Fund": safe_sum(tabel_2, 'RV_AV_IF'),
+                'Diff # of Policies': safe_sum(tabel_2, 'pol_num') - safe_sum(tabel_2, 'pol_b'),
+                'Diff fund': safe_sum(tabel_2, 'total_fund') - safe_sum(tabel_2, 'RV_AV_IF')
+            }])
+
+        # TABEL 3: GS
+        tabel_3 = pd.DataFrame()
+        summary_tabel_3 = None
+        
+        # Get GS data from original RAFM (before excluding GS)
+        if not run_rafm_only.empty and goc_col_rafm:
+            tabel_gs_rafm = filter_goc_by_code(run_rafm_only, 'GS')
+            if not tabel_gs_rafm.empty:
+                tabel_gs_rafm = tabel_gs_rafm.rename(columns={goc_col_rafm: goc_column})
+        else:
+            tabel_gs_rafm = pd.DataFrame()
+        
+        dv_gs = filter_goc_by_code(dv_ul_total, 'GS')
+
+        if not dv_gs.empty or not tabel_gs_rafm.empty:
+            tabel_3 = pd.merge(dv_gs, tabel_gs_rafm, on=goc_column, how="outer", suffixes=("_uv_total", "_run_rafm"))
+            tabel_3.fillna(0, inplace=True)
+
+            tabel_3['diff policies'] = safe_sum(tabel_3, 'pol_num') - safe_sum(tabel_3, 'pol_b')
+            tabel_3['diff sa'] = safe_sum(tabel_3, 'total_fund') - safe_sum(tabel_3, 'RV_AV_IF')
+
+            summary_tabel_3 = pd.DataFrame([{
+                "DV": safe_sum(tabel_3, 'pol_num'),
+                "DV Fund": safe_sum(tabel_3, 'total_fund'),
+                "RAFM Output": safe_sum(tabel_3, 'pol_b'),
+                "RAFM Fund": safe_sum(tabel_3, 'RV_AV_IF'),
+                "Diff # of Policies": safe_sum(tabel_3, 'pol_num') - safe_sum(tabel_3, 'pol_b'),
+                "Diff Fund": safe_sum(tabel_3, 'total_fund') - safe_sum(tabel_3, 'RV_AV_IF')
+            }])
+
+        return {
+            'product_type': 'UL',
+            'tabel_total': tabel_total_l,
+            'tabel_2': tabel_2,
+            'tabel_3': tabel_3,
+            'summary_total': summary,
+            'summary_tabel_2': summary_tabel_2,
+            'summary_tabel_3': summary_tabel_3,
+            'run_name': params.get('run_name', params.get('run', ''))
+        }
+    except Exception as e:
+        return {"error": f"Error in run_ul: {str(e)}"}
