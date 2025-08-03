@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore')
 # ============================================================================
 # CONFIGURATION - CHANGE THIS PATH TO YOUR INPUT FILE
 # ============================================================================
-input_sheet = r"C:\Users\YourName\Documents\Insurance_Control_Input.xlsx"
+input_sheet = r"D:\RUN 3\control_3\control_3\IRCS3_local\Input Sheet_IRCS3.xlsx"
 
 # Import modules
 try:
