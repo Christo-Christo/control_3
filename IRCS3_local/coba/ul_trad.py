@@ -8,18 +8,32 @@ import warnings
 warnings.filterwarnings('ignore')
 
 def make_columns_case_insensitive(df):
-    """Make DataFrame column names case-insensitive by converting to lowercase"""
-    if df.empty:
-        return df, {}
+    """
+    Convert DataFrame column names to lowercase (case-insensitive handling),
+    while returning mapping from lowercase → original.
     
-    # Create a mapping of lowercase to original column names
-    column_mapping = {col.lower(): col for col in df.columns}
+    Returns:
+        df_lower: DataFrame with lowercase column names
+        column_mapping: dict of {lowercase_col: original_col}
+    """
+    if df is None or df.empty:
+        return pd.DataFrame(), {}
+
+    column_mapping = {}
+    lowercase_cols = []
     
-    # Rename columns to lowercase
+    for col in df.columns:
+        col_lower = col.lower()
+        if col_lower in column_mapping:
+            print(f"⚠️ Warning: Duplicate lowercase column detected: '{col}' conflicts with '{column_mapping[col_lower]}'")
+        column_mapping[col_lower] = col
+        lowercase_cols.append(col_lower)
+    
     df_lower = df.copy()
-    df_lower.columns = df_lower.columns.str.lower()
+    df_lower.columns = lowercase_cols
     
     return df_lower, column_mapping
+
 
 def parse_multi_values(value):
     """Parse comma/slash separated values"""
@@ -170,50 +184,52 @@ def clean_numeric_column(df, column_name):
     
     return df
 
-def load_excel_sheet_safely(file_path, sheet_name, required_columns=None):
-    """Safely load Excel sheet with error handling and case-insensitive column processing"""
+def load_excel_sheet_safely(file_path, sheet_name, required_columns=None, return_column_mapping=False):
+    """
+    Safely load Excel sheet with optional required column check (case-insensitive).
+    If return_column_mapping is True, returns a tuple (df, column_mapping), otherwise just df.
+    """
     try:
         if not file_path or not os.path.exists(file_path):
-            print(f"Warning: File not found: {file_path}")
-            return pd.DataFrame()
+            print(f"⚠️ File not found: {file_path}")
+            return (pd.DataFrame(), {}) if return_column_mapping else pd.DataFrame()
         
         df = pd.read_excel(file_path, sheet_name=sheet_name, engine='openpyxl')
-        
+
+        # Build mapping original → lowercase
+        column_mapping = {col.lower(): col for col in df.columns}
+
         if required_columns:
-            # Make both df columns and required columns case-insensitive for comparison
             df_columns_lower = [col.lower() for col in df.columns]
             required_lower = [col.lower() for col in required_columns]
-            
-            # Check if required columns exist (case-insensitive)
+
             missing_cols = [col for col in required_lower if col not in df_columns_lower]
             if missing_cols:
-                print(f"Warning: Missing columns {missing_cols} in {sheet_name}")
-                return pd.DataFrame()
-            
-            # Select columns (preserve original case in result)
-            selected_columns = []
-            for req_col in required_columns:
-                for orig_col in df.columns:
-                    if orig_col.lower() == req_col.lower():
-                        selected_columns.append(orig_col)
-                        break
-            
+                print(f"⚠️ Missing columns {missing_cols} in {sheet_name}")
+                return (pd.DataFrame(), {}) if return_column_mapping else pd.DataFrame()
+
+            # Select columns, preserving original names
+            selected_columns = [column_mapping[col.lower()] for col in required_columns]
             df = df[selected_columns]
-            
-            # Standardize column names to lowercase for processing
-            df.columns = [col.lower() for col in df.columns]
         
-        return df
+        # Standardize column names to lowercase
+        df.columns = [col.lower() for col in df.columns]
+
+        return (df, column_mapping) if return_column_mapping else df
+
     except Exception as e:
-        print(f"Error loading {sheet_name} from {file_path}: {str(e)}")
-        return pd.DataFrame()
+        print(f"❌ Error loading {sheet_name} from {file_path}: {str(e)}")
+        return (pd.DataFrame(), {}) if return_column_mapping else pd.DataFrame()
+
 
 def run_trad(params):
     """Main function for Traditional products processing with case-insensitive handling"""
     try:
         path_dv = params.get('path_dv', '')
         path_rafm = params.get('path_rafm', '')
-        
+        print(f"\n🟨 Menjalankan run_trad: {params.get('run_name')}")
+        print(f"🟨 Filter yang digunakan: {params.get('filters')}")
+        print(f"🟨 DV file: {path_dv}, RAFM file: {path_rafm}")
         if not path_dv or not os.path.isfile(path_dv):
             return {"error": f"File DV tidak ditemukan atau path kosong: {path_dv}"}
         if not path_rafm or not os.path.isfile(path_rafm):
@@ -227,12 +243,13 @@ def run_trad(params):
                 dv_trad = pd.read_excel(path_dv, engine='openpyxl')
             except Exception as e:
                 return {"error": f"Gagal membaca file DV: {str(e)}"}
-        
+            
+        print(f"✅ DV loaded: {dv_trad.shape}, Columns: {dv_trad.columns.tolist()}")        
         # Make columns case-insensitive for processing
         dv_trad_processed, dv_column_mapping = make_columns_case_insensitive(dv_trad)
         
         # Apply filters
-        dv_trad_total = apply_filters(dv_trad, params)
+        dv_trad_total = apply_filters(dv_trad_processed, params)
         
         # Drop unnecessary columns (case-insensitive)
         columns_to_drop = ['product_group', 'pre_ann', 'loan_sa']
@@ -244,6 +261,7 @@ def run_trad(params):
                 existing_columns_to_drop.append(col)
         
         dv_trad_total = dv_trad_total.drop(columns=existing_columns_to_drop, errors='ignore')
+        print(f"✅ DV setelah filter: {dv_trad_total.shape}")
 
         # Process GOC column (find the correct case)
         goc_column = None
@@ -334,13 +352,12 @@ def run_trad(params):
         # Load RAFM data with case-insensitive column handling
         run_rafm_idr = load_excel_sheet_safely(path_rafm, 'extraction_IDR', ['GOC', 'period', 'cov_units', 'pol_b'])
         run_rafm_usd = load_excel_sheet_safely(path_rafm, 'extraction_USD', ['GOC', 'period', 'cov_units', 'pol_b'])
-        
+
         # Filter period = 0
         for df_rafm in [run_rafm_idr, run_rafm_usd]:
             if not df_rafm.empty and 'period' in df_rafm.columns:
                 df_rafm = df_rafm[df_rafm['period'].astype(str) == '0']
                 df_rafm = df_rafm.drop(columns=["period"], errors='ignore')
-
         # Filter period = 0 and drop period column
         if not run_rafm_idr.empty:
             run_rafm_idr = run_rafm_idr[run_rafm_idr['period'].astype(str) == '0']
@@ -352,7 +369,8 @@ def run_trad(params):
 
         # Combine RAFM data
         run_rafm_only = pd.concat([run_rafm_idr, run_rafm_usd], ignore_index=True)
-        
+        print(f"✅ RAFM loaded: {run_rafm_only.shape}, Columns: {run_rafm_only.columns.tolist()}")
+
         if not run_rafm_only.empty:
             run_rafm_only = clean_numeric_column(run_rafm_only, 'pol_b')
             run_rafm_only = clean_numeric_column(run_rafm_only, 'cov_units')
@@ -536,7 +554,9 @@ def run_ul(params):
         path_dv = params.get('path_dv', '')
         path_rafm = params.get('path_rafm', '')
         path_uvsg = params.get('path_uvsg', '')  # Optional path
-        
+        print(f"\n🟨 Menjalankan run_trad: {params.get('run_name')}")
+        print(f"🟨 Filter yang digunakan: {params.get('filters')}")
+        print(f"🟨 DV file: {path_dv}, RAFM file: {path_rafm}, UVSG :{path_uvsg}")
         if not path_dv or not os.path.isfile(path_dv):
             return {"error": f"File DV tidak ditemukan atau path kosong: {path_dv}"}
         if not path_rafm or not os.path.isfile(path_rafm):
@@ -550,7 +570,8 @@ def run_ul(params):
         
         if dv_ul.empty:
             return {"error": "File DV kosong atau tidak dapat dibaca"}
-        
+        print(f"✅ DV loaded: {dv_ul.shape}, Columns: {dv_ul.columns.tolist()}")        
+        dv_ul, dv_column_mapping = make_columns_case_insensitive(dv_ul)
         dv_ul_total = apply_filters(dv_ul, params)
         
         # Drop unnecessary columns (case-insensitive)
@@ -614,7 +635,6 @@ def run_ul(params):
         # Load RAFM data with case-insensitive column handling
         run_rafm_idr = load_excel_sheet_safely(path_rafm, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
         run_rafm_usd = load_excel_sheet_safely(path_rafm, 'extraction_USD', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
-        
         # Filter period = 0
         if not run_rafm_idr.empty:
             run_rafm_idr = run_rafm_idr[run_rafm_idr['period'].astype(str) == '0']
@@ -623,13 +643,12 @@ def run_ul(params):
         if not run_rafm_usd.empty:
             run_rafm_usd = run_rafm_usd[run_rafm_usd['period'].astype(str) == '0']
             run_rafm_usd = run_rafm_usd.drop(columns=["period"])
-
         # Combine RAFM data
         run_rafm_only = pd.concat([run_rafm_idr, run_rafm_usd], ignore_index=True)
         if not run_rafm_only.empty:
             run_rafm_only = clean_numeric_column(run_rafm_only, 'pol_b')
             run_rafm_only = clean_numeric_column(run_rafm_only, 'RV_AV_IF')
-
+        print(f"✅ RAFM loaded: {run_rafm_only.shape}, Columns: {run_rafm_only.columns.tolist()}")
         # Exclude GS from RAFM
         goc_col_rafm = None
         for col in run_rafm_only.columns:
@@ -802,4 +821,3 @@ def run_ul(params):
         }
     except Exception as e:
         return {"error": f"Error in run_ul: {str(e)}"}
-

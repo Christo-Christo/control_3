@@ -56,6 +56,10 @@ def get_output_file_paths(excel_path):
         print(f"❌ Error getting output paths: {e}")
         return None, None
 
+def safe_get_dict(d, key):
+    val = d.get(key)
+    return val if isinstance(val, dict) else {}
+
 def normalize_filter_params(params):
     return {k.lower(): v for k, v in params.items()}
 
@@ -236,21 +240,25 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
         tr = trad_results[run_name]
 
         df_list = [
-            tr.get('tabel_total', {}).get(run_name, pd.DataFrame()),
-            tr.get('tabel_2', {}).get(run_name, pd.DataFrame()),
-            tr.get('tabel_3', {}).get(run_name, pd.DataFrame()),
-            tr.get('tabel_4', {}).get(run_name, pd.DataFrame()),
-            tr.get('tabel_5', {}).get(run_name, pd.DataFrame()),
+            safe_get_dict(tr, 'tabel_total').get(run_name, pd.DataFrame()),
+            safe_get_dict(tr, 'tabel_2').get(run_name, pd.DataFrame()),
+            safe_get_dict(tr, 'tabel_3').get(run_name, pd.DataFrame()),
+            safe_get_dict(tr, 'tabel_4').get(run_name, pd.DataFrame()),
+            safe_get_dict(tr, 'tabel_5').get(run_name, pd.DataFrame()),
         ]
 
         sum_list = [
-            tr.get('summary_total', {}).get(run_name, pd.DataFrame()),
-            tr.get('summary_tabel_2', {}).get(run_name, pd.DataFrame()),
-            tr.get('summary_tabel_3', {}).get(run_name, pd.DataFrame()),
-            tr.get('summary_tabel_4', {}).get(run_name, pd.DataFrame()),
-            tr.get('summary_tabel_5', {}).get(run_name, pd.DataFrame()),
+            safe_get_dict(tr, 'summary_total').get(run_name, pd.DataFrame()),
+            safe_get_dict(tr, 'summary_tabel_2').get(run_name, pd.DataFrame()),
+            safe_get_dict(tr, 'summary_tabel_3').get(run_name, pd.DataFrame()),
+            safe_get_dict(tr, 'summary_tabel_4').get(run_name, pd.DataFrame()),
+            safe_get_dict(tr, 'summary_tabel_5').get(run_name, pd.DataFrame()),
         ]
-
+        print(f"Menulis worksheet untuk run: {run_name}")
+        for idx, df in enumerate(df_list):
+            print(f"  Tabel {idx}: shape {df.shape}")
+        for idx, summary in enumerate(sum_list):
+            print(f"  Summary {idx}: shape {summary.shape}")
         col_starts = [1, 9, 17, 25, 33]
 
         for idx, (df, summary) in enumerate(zip(df_list, sum_list)):
@@ -333,16 +341,21 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         ul = ul_results[run_name]
 
         df_list = [
-            ul.get('tabel_total', {}).get(run_name, pd.DataFrame()),
-            ul.get('tabel_2', {}).get(run_name, pd.DataFrame()),
-            ul.get('tabel_3', {}).get(run_name, pd.DataFrame()),
+            safe_get_dict(ul, 'tabel_total').get(run_name, pd.DataFrame()),
+            safe_get_dict(ul, 'tabel_2').get(run_name, pd.DataFrame()),
+            safe_get_dict(ul, 'tabel_3').get(run_name, pd.DataFrame()),
         ]
 
         sum_list = [
-            ul.get('summary_total', {}).get(run_name, pd.DataFrame()),
-            ul.get('summary_tabel_2', {}).get(run_name, pd.DataFrame()),
-            ul.get('summary_tabel_3', {}).get(run_name, pd.DataFrame()),
+            safe_get_dict(ul, 'summary_total').get(run_name, pd.DataFrame()),
+            safe_get_dict(ul, 'summary_tabel_2').get(run_name, pd.DataFrame()),
+            safe_get_dict(ul, 'summary_tabel_3').get(run_name, pd.DataFrame()),
         ]
+        print(f"Menulis worksheet untuk run: {run_name}")
+        for idx, df in enumerate(df_list):
+            print(f"  Tabel {idx}: shape {df.shape}")
+        for idx, summary in enumerate(sum_list):
+            print(f"  Summary {idx}: shape {summary.shape}")
 
         col_starts = [1, 9, 17]
 
