@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-Configuration Reader for Insurance Control System
-Reads configuration from the INPUT_SETTING sheet and converts it to filter parameters.
-"""
-
 import pandas as pd
 import os
 
@@ -239,3 +233,14 @@ def setup_configuration(excel_path):
     
     print("✓ Configuration setup completed successfully")
     return True
+
+def validate_excel_file(file_path):
+    try:
+        import pandas as pd
+        xl = pd.ExcelFile(file_path)
+        if 'FILTER_TRAD' in xl.sheet_names and 'FILTER_UL' in xl.sheet_names:
+            return True, "Validation successful"
+        else:
+            return False, "Required sheets missing"
+    except Exception as e:
+        return False, str(e)
