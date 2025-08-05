@@ -331,10 +331,10 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
                         col_letter = xl_col_to_name(col_idx)
 
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        ws.write_formula(4, col_idx, sum_formula,wb.add_format({'num_format': number_format,'bg_color': '#92D050', 'bold': True}))
+                        ws.write_formula(4, col_idx, sum_formula,wb.add_format({'num_format': number_format}))
 
                         diff_formula = f'={col_letter}4 - {col_letter}5'
-                        ws.write_formula(5, col_idx, diff_formula,wb.add_format({'num_format': number_format,'bg_color': '#92D050', 'bold': True}))
+                        ws.write_formula(5, col_idx, diff_formula,wb.add_format({'num_format': number_format}))
 
                 else:
                     for col_offset in range(1, 7):
@@ -342,7 +342,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
                         col_letter = xl_col_to_name(col_idx)
 
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        ws.write_formula(3,col_idx, sum_formula,wb.add_format({'num_format': number_format,'bg_color': '#92D050', 'bold': True}))
+                        ws.write_formula(3,col_idx, sum_formula,wb.add_format({'num_format': number_format}))
     wb.close()
 
 
@@ -493,8 +493,8 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
                         diff_formula = f'={col_letter}4 - {col_letter}5'
 
-                        ws.write_formula(4, col_idx, sum_formula,wb.add_format({'num_format': number_format,'bg_color': '#92D050', 'bold': True}))
-                        ws.write_formula(5, col_idx, diff_formula,wb.add_format({'num_format': number_format,'bg_color': '#92D050', 'bold': True}))
+                        ws.write_formula(4, col_idx, sum_formula,wb.add_format({'num_format': number_format}))
+                        ws.write_formula(5, col_idx, diff_formula,wb.add_format({'num_format': number_format}))
 
                 else:  
                     for col_offset in range(1,7):
@@ -502,7 +502,7 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
                         col_letter = xl_col_to_name(col_idx)
 
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        ws.write_formula(3, col_idx, sum_formula,wb.add_format({'num_format': number_format,'bg_color': '#92D050', 'bold': True}))
+                        ws.write_formula(3, col_idx, sum_formula,wb.add_format({'num_format': number_format}))
     wb.close()
 
 def main(input_sheet_path):

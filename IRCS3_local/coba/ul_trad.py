@@ -626,6 +626,21 @@ def run_ul(params):
 
         # Merge data
         merged = pd.merge(dv_ul_total, run_rafm, on=goc_column, how="outer", suffixes=("_uv_total", "_run_rafm"))
+        
+        # Calculate differences with safe column access
+        def safe_get_col(df, col_name):
+            for col in df.columns:
+                if col.lower() == col_name.lower():
+                    return col
+            return None
+
+        pol_num_col = safe_get_col(merged, 'pol_num')
+        total_fund_col = safe_get_col(merged, 'total_fund')
+        pol_b_col = safe_get_col(merged, 'pol_b')
+        rv_av_if_col = safe_get_col(merged, 'RV_AV_IF')
+
+        merged['diff_policies'] = merged[pol_num_col] - merged[pol_b_col]
+        merged['diff_sa'] = merged[total_fund_col] - merged[rv_av_if_col]
 
         # Generate tables
         tabel_total_l = exclude_goc_by_code(merged, 'gs')
@@ -636,7 +651,7 @@ def run_ul(params):
                 if col.lower() == col_name.lower():
                     return df[col].sum()
             return 0
-
+        
         # Summary
         summary = pd.DataFrame({
             'DV # of Policies': [
