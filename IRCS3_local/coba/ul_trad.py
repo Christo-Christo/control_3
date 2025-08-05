@@ -227,9 +227,6 @@ def run_trad(params):
     try:
         path_dv = params.get('path_dv', '')
         path_rafm = params.get('path_rafm', '')
-        print(f"\n🟨 Menjalankan run_trad: {params.get('run_name')}")
-        print(f"🟨 Filter yang digunakan: {params.get('filters')}")
-        print(f"🟨 DV file: {path_dv}, RAFM file: {path_rafm}")
         if not path_dv or not os.path.isfile(path_dv):
             return {"error": f"File DV tidak ditemukan atau path kosong: {path_dv}"}
         if not path_rafm or not os.path.isfile(path_rafm):
@@ -243,8 +240,7 @@ def run_trad(params):
                 dv_trad = pd.read_excel(path_dv, engine='openpyxl')
             except Exception as e:
                 return {"error": f"Gagal membaca file DV: {str(e)}"}
-            
-        print(f"✅ DV loaded: {dv_trad.shape}, Columns: {dv_trad.columns.tolist()}")        
+                
         # Make columns case-insensitive for processing
         dv_trad_processed, dv_column_mapping = make_columns_case_insensitive(dv_trad)
         
@@ -261,7 +257,6 @@ def run_trad(params):
                 existing_columns_to_drop.append(col)
         
         dv_trad_total = dv_trad_total.drop(columns=existing_columns_to_drop, errors='ignore')
-        print(f"✅ DV setelah filter: {dv_trad_total.shape}")
 
         # Process GOC column (find the correct case)
         goc_column = None
@@ -369,7 +364,6 @@ def run_trad(params):
 
         # Combine RAFM data
         run_rafm_only = pd.concat([run_rafm_idr, run_rafm_usd], ignore_index=True)
-        print(f"✅ RAFM loaded: {run_rafm_only.shape}, Columns: {run_rafm_only.columns.tolist()}")
 
         if not run_rafm_only.empty:
             run_rafm_only = clean_numeric_column(run_rafm_only, 'pol_b')
@@ -388,6 +382,9 @@ def run_trad(params):
                 run_rafm = run_rafm_only.copy()
             
             merged = pd.merge(dv_trad_total, run_rafm, on=goc_column, how="outer", suffixes=("_trad", "_rafm"))
+            merged_cols = merged.columns.tolist()
+            merged_cols[3], merged_cols[4] = merged_cols[4], merged_cols[3]
+            merged = merged[merged_cols]
         else:
             merged = dv_trad_total.copy()
             merged['pol_b'] = 0
@@ -421,7 +418,6 @@ def run_trad(params):
             return 0
 
         summary = pd.DataFrame({
-            '': ['Total Trad All from DV', 'Grand Total Summary', 'Check'],
             'DV_Policies': [
                 safe_sum(dv_trad_total, 'pol_num'),
                 safe_sum(tabel_total_l, 'pol_num'),
@@ -554,9 +550,6 @@ def run_ul(params):
         path_dv = params.get('path_dv', '')
         path_rafm = params.get('path_rafm', '')
         path_uvsg = params.get('path_uvsg', '')  # Optional path
-        print(f"\n🟨 Menjalankan run_trad: {params.get('run_name')}")
-        print(f"🟨 Filter yang digunakan: {params.get('filters')}")
-        print(f"🟨 DV file: {path_dv}, RAFM file: {path_rafm}, UVSG :{path_uvsg}")
         if not path_dv or not os.path.isfile(path_dv):
             return {"error": f"File DV tidak ditemukan atau path kosong: {path_dv}"}
         if not path_rafm or not os.path.isfile(path_rafm):
@@ -569,8 +562,7 @@ def run_ul(params):
             return {"error": f"Gagal membaca file DV: {str(e)}"}
         
         if dv_ul.empty:
-            return {"error": "File DV kosong atau tidak dapat dibaca"}
-        print(f"✅ DV loaded: {dv_ul.shape}, Columns: {dv_ul.columns.tolist()}")        
+            return {"error": "File DV kosong atau tidak dapat dibaca"} 
         dv_ul, dv_column_mapping = make_columns_case_insensitive(dv_ul)
         dv_ul_total = apply_filters(dv_ul, params)
         
@@ -648,7 +640,6 @@ def run_ul(params):
         if not run_rafm_only.empty:
             run_rafm_only = clean_numeric_column(run_rafm_only, 'pol_b')
             run_rafm_only = clean_numeric_column(run_rafm_only, 'RV_AV_IF')
-        print(f"✅ RAFM loaded: {run_rafm_only.shape}, Columns: {run_rafm_only.columns.tolist()}")
         # Exclude GS from RAFM
         goc_col_rafm = None
         for col in run_rafm_only.columns:
@@ -695,7 +686,6 @@ def run_ul(params):
 
         # Merge data
         merged = pd.merge(dv_ul_total, run_rafm, on=goc_column, how="outer", suffixes=("_uv_total", "_run_rafm"))
-        merged.fillna(0, inplace=True)
 
         # Calculate differences with safe column access
         def safe_get_col(df, col_name):
@@ -731,7 +721,6 @@ def run_ul(params):
 
         # Summary
         summary = pd.DataFrame({
-            '': ['Total UL All from DV', 'Grand Total Summary', 'Check'],
             'DV # of Policies': [
                 safe_sum(dv_ul_total, 'pol_num'),
                 safe_sum(tabel_total_l, 'pol_num'),

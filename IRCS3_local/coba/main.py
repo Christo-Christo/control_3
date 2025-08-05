@@ -8,7 +8,6 @@ import warnings
 import xlsxwriter
 warnings.filterwarnings('ignore')
 
-input_sheet_path = r"D:\RUN 3\control_3\control_3\IRCS3_local\Input Sheet_IRCS3.xlsx"
 
 class InputSheetConfig:
     def __init__(self, valuation_year, valuation_month, valuation_rate, tradfilter, ulfilter, output_trad, output_ul):
@@ -84,7 +83,6 @@ def get_valuation_info_and_filters(excel_path):
     """Membaca informasi valuation dan filter TRAD/UL sekaligus"""
     try:
         df_input_setting = pd.read_excel(excel_path, sheet_name='INPUT_SETTING', engine='openpyxl')
-        # Ambil valuation year, month, rate dari INPUT_SETTING berdasarkan Category
         valuation_year = None
         valuation_month = None
         valuation_rate = None
@@ -101,7 +99,6 @@ def get_valuation_info_and_filters(excel_path):
         tradfilter_configs = read_filter_config(excel_path, 'FILTER_TRAD')
         ulfilter_configs = read_filter_config(excel_path, 'FILTER_UL')
 
-        # Ambil list run_name dari filter sebagai tradfilter dan ulfilter untuk penulisan excel nanti
         tradfilter_run_names = [c.get('run_name', '') for c in tradfilter_configs if c.get('run_name', '')]
         ulfilter_run_names = [c.get('run_name', '') for c in ulfilter_configs if c.get('run_name', '')]
 
@@ -179,6 +176,24 @@ def run_all_configurations(excel_path):
 
     return trad_results, ul_results
 
+def convert_trad_result_to_standard(result):
+    return {
+        'tables': [
+            result.get('tabel_total', pd.DataFrame()),
+            result.get('tabel_2', pd.DataFrame()),
+            result.get('tabel_3', pd.DataFrame()),
+            result.get('tabel_4', pd.DataFrame()),
+            result.get('tabel_5', pd.DataFrame())
+        ],
+        'summaries': [
+            result.get('summary_total', pd.DataFrame()),
+            result.get('summary_tabel_2', pd.DataFrame()),
+            result.get('summary_tabel_3', pd.DataFrame()),
+            result.get('summary_tabel_4', pd.DataFrame()),
+            result.get('summary_tabel_5', pd.DataFrame())
+        ]
+    }
+
 def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
     wb = xlsxwriter.Workbook(input_config.output_trad, {'nan_inf_to_errors': True})
     number_format = '_(* #,##0_);_(* (#,##0)_);_(* "-"_);_(@_)'
@@ -224,9 +239,8 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
     for i, run_name in enumerate(input_config.tradfilter):
         if run_name in trad_results and 'summary_total' in trad_results[run_name]:
             ctrlsum = trad_results[run_name]['summary_total']
-            for c, item_ in enumerate(ctrlsum.iloc[1]):  # baris index 1: Grand Total Summary
+            for c, item_ in enumerate(ctrlsum.iloc[1]): 
                 ws.write(6 + i, c + 1, item_, wb.add_format({'num_format': number_format}))
-
 
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')
@@ -240,26 +254,9 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
         ws = wb.add_worksheet(f'{run_name}')
         tr = trad_results[run_name]
 
-        df_list = [
-            safe_get_dict(tr, 'tabel_total').get(run_name, pd.DataFrame()),
-            safe_get_dict(tr, 'tabel_2').get(run_name, pd.DataFrame()),
-            safe_get_dict(tr, 'tabel_3').get(run_name, pd.DataFrame()),
-            safe_get_dict(tr, 'tabel_4').get(run_name, pd.DataFrame()),
-            safe_get_dict(tr, 'tabel_5').get(run_name, pd.DataFrame()),
-        ]
-
-        sum_list = [
-            safe_get_dict(tr, 'summary_total').get(run_name, pd.DataFrame()),
-            safe_get_dict(tr, 'summary_tabel_2').get(run_name, pd.DataFrame()),
-            safe_get_dict(tr, 'summary_tabel_3').get(run_name, pd.DataFrame()),
-            safe_get_dict(tr, 'summary_tabel_4').get(run_name, pd.DataFrame()),
-            safe_get_dict(tr, 'summary_tabel_5').get(run_name, pd.DataFrame()),
-        ]
-        print(f"Menulis worksheet untuk run: {run_name}")
-        for idx, df in enumerate(df_list):
-            print(f"  Tabel {idx}: shape {df.shape}")
-        for idx, summary in enumerate(sum_list):
-            print(f"  Summary {idx}: shape {summary.shape}")
+        standard = convert_trad_result_to_standard(tr)
+        df_list = standard['tables']
+        sum_list = standard['summaries']
         col_starts = [1, 9, 17, 25, 33]
 
         for idx, (df, summary) in enumerate(zip(df_list, sum_list)):
@@ -276,12 +273,39 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
 
             for row in range(len(summary)):
                 for c, item in enumerate(summary.iloc[row]):
-                    ws.write(3 + row, col_starts[idx] + 1 + c, item, wb.add_format({'num_format': number_format, 'bg_color': '#92D050', 'bold': True}))
+                    value = item
+                    if pd.isna(value) or value == '':
+                        value = 0  
+                    ws.write(
+                        3 + row, 
+                        col_starts[idx] + 1 + c, 
+                        value, 
+                        wb.add_format({
+                            'num_format': number_format,
+                            'bg_color': '#92D050',
+                            'bold': True
+                        })
+                    )
             for row in range(len(df)):
                 for c, item in enumerate(df.iloc[row]):
                     ws.write(6 + row, col_starts[idx] + c, item, wb.add_format({'num_format': number_format}))
 
     wb.close()
+
+
+def convert_ul_result_to_standard(result):
+    return {
+        'tables': [
+            result.get('tabel_total', pd.DataFrame()),
+            result.get('tabel_2', pd.DataFrame()),
+            result.get('tabel_3', pd.DataFrame())
+        ],
+        'summaries': [
+            result.get('summary_total', pd.DataFrame()),
+            result.get('summary_tabel_2', pd.DataFrame()),
+            result.get('summary_tabel_3', pd.DataFrame())
+        ]
+    }
 
 def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
     wb = xlsxwriter.Workbook(input_config.output_ul, {'nan_inf_to_errors': True})
@@ -342,22 +366,12 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         ws = wb.add_worksheet(f'{run_name}')
         ul = ul_results[run_name]
 
-        df_list = [
-            safe_get_dict(ul, 'tabel_total').get(run_name, pd.DataFrame()),
-            safe_get_dict(ul, 'tabel_2').get(run_name, pd.DataFrame()),
-            safe_get_dict(ul, 'tabel_3').get(run_name, pd.DataFrame()),
-        ]
+        # convert ul result to standard structure
+        standard = convert_ul_result_to_standard(ul)
+        df_list = standard['tables']
+        sum_list = standard['summaries']
 
-        sum_list = [
-            safe_get_dict(ul, 'summary_total').get(run_name, pd.DataFrame()),
-            safe_get_dict(ul, 'summary_tabel_2').get(run_name, pd.DataFrame()),
-            safe_get_dict(ul, 'summary_tabel_3').get(run_name, pd.DataFrame()),
-        ]
-        print(f"Menulis worksheet untuk run: {run_name}")
-        for idx, df in enumerate(df_list):
-            print(f"  Tabel {idx}: shape {df.shape}")
-        for idx, summary in enumerate(sum_list):
-            print(f"  Summary {idx}: shape {summary.shape}")
+        print(f"Progress worksheet: {run_name}")
 
         col_starts = [1, 9, 17]
 
@@ -377,7 +391,19 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
 
             for row in range(len(summary)):
                 for c, item in enumerate(summary.iloc[row]):
-                    ws.write(3 + row, col_starts[idx] + 1 + c, item, wb.add_format({'num_format': number_format, 'bg_color': '#92D050', 'bold': True}))
+                    value = item
+                    if pd.isna(value) or value == '':
+                        value = 0
+                    ws.write(
+                        3 + row, 
+                        col_starts[idx] + 1 + c, 
+                        value, 
+                        wb.add_format({
+                            'num_format': number_format,
+                            'bg_color': '#92D050',
+                            'bold': True
+                        })
+                    )
 
             for row in range(len(df)):
                 for c, item in enumerate(df.iloc[row]):
@@ -385,11 +411,13 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
 
     wb.close()
 
-def main():
+
+
+def main(input_sheet_path):
     start_time = time.time()
 
     print("="*60)
-    print("INSURANCE CONTROL SYSTEM")
+    print("CONTROL 3")
     print("="*60)
     print(f"Input file: {input_sheet_path}")
     print("="*60)
@@ -415,19 +443,19 @@ def main():
 
     print(f"✅ {message}")
 
-    # Baca config valuation dan filters (run_name list)
     input_config = get_valuation_info_and_filters(input_sheet_path)
     if input_config is None:
         print("❌ Failed to read input configuration")
         return False
 
-    # Baca output paths
     output_trad_path, output_ul_path = get_output_file_paths(input_sheet_path)
     if not output_trad_path or not output_ul_path:
         print("❌ Output paths not properly configured")
         return False
+
     input_config.output_trad = output_trad_path
     input_config.output_ul = output_ul_path
+
 
     trad_results, ul_results = run_all_configurations(input_sheet_path)
 
@@ -439,56 +467,36 @@ def main():
     print("WRITING RESULTS TO EXCEL")
     print("="*60)
 
-    if trad_results:
-        output_folder = os.path.dirname(output_trad_path)
-        os.makedirs(output_folder, exist_ok=True)  # Pastikan folder ada
-        print(f"\n📤 Menulis hasil TRAD ke: {output_trad_path}")
+    def write_trad_wrapper():
+        output_folder = os.path.dirname(input_config.output_trad)
+        os.makedirs(output_folder, exist_ok=True)
+        print(f"\n📤 Output path trad: {input_config.output_trad}")
         write_trad_results_to_excel(trad_results, input_config)
 
-    if ul_results:
-        output_folder = os.path.dirname(output_ul_path)
-        os.makedirs(output_folder, exist_ok=True)  # Pastikan folder ada
-        print(f"\n📤 Menulis hasil UL ke: {output_ul_path}")
+    def write_ul_wrapper():
+        output_folder = os.path.dirname(input_config.output_ul)
+        os.makedirs(output_folder, exist_ok=True)
+        print(f"\n📤 Output path ul: {input_config.output_ul}")
         write_ul_results_to_excel(ul_results, input_config)
+
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        if trad_results:
+            futures.append(executor.submit(write_trad_wrapper))
+        if ul_results:
+            futures.append(executor.submit(write_ul_wrapper))
+
+        for future in futures:
+            try:
+                future.result()
+            except Exception as e:
+                print(f"❌ Error saat menulis file: {e}")
+                return False
 
     elapsed = time.time() - start_time
     formatted = str(datetime.timedelta(seconds=int(elapsed)))
-    print(f"⏱️ Total runtime: {formatted}")
+    print(f"\n⏱️ Total runtime: {formatted}")
 
     return True
 
-def show_menu():
-    while True:
-        print("\n" + "="*50)
-        print("INSURANCE CONTROL SYSTEM - MENU")
-        print("="*50)
-        print("1. Run All Configurations")
-        print("2. Setup Configuration from INPUT_SETTING")
-        print("3. Validate Input File")
-        print("4. Exit")
-        print("="*50)
 
-        choice = input("Select an option (1-4): ").strip()
-
-        if choice == '1':
-            main()
-        elif choice == '2':
-            setup_success = setup_configuration(input_sheet_path)
-            print("✅ Configuration setup completed" if setup_success else "❌ Configuration setup failed")
-        elif choice == '3':
-            is_valid, message = validate_excel_file(input_sheet_path)
-            print(f"✅ {message}" if is_valid else f"❌ {message}")
-        elif choice == '4':
-            print("Goodbye!")
-            break
-        else:
-            print("Invalid choice. Please select 1-4.")
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == '--menu':
-        show_menu()
-    else:
-        success = main()
-        if os.name == 'nt':
-            input("\nPress Enter to exit...")
-        sys.exit(0 if success else 1)
