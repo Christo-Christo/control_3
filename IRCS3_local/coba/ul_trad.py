@@ -129,7 +129,6 @@ def apply_filters(df, params):
     return filtered_df
 
 def filter_goc_by_code(df, code):
-    """Filter dataframe by GOC code with case-insensitive column handling"""
     if df.empty:
         return df
     
@@ -138,11 +137,10 @@ def filter_goc_by_code(df, code):
     
     if goc_col not in df_processed.columns:
         return df
-        
-    tokens = [k for k in code.split('_') if k]
-    mask = df_processed[goc_col].apply(lambda x: all(token.lower() in str(x).lower() for token in tokens))
     
+    mask = df_processed[goc_col].str.contains(code, case=False, na=False)
     return df[mask].copy()
+
 
 def exclude_goc_by_code(df, code):
     """Exclude dataframe by GOC code with case-insensitive column handling"""
@@ -420,110 +418,56 @@ def run_trad(params):
         summary = pd.DataFrame({
             'DV_Policies': [
                 safe_sum(dv_trad_total, 'pol_num'),
-                safe_sum(tabel_total_l, 'pol_num'),
-                safe_sum(dv_trad_total, 'pol_num') - safe_sum(tabel_total_l, 'pol_num')
             ],
             'DV_SA': [
                 safe_sum(dv_trad_total, 'sum_assd'),
-                safe_sum(tabel_total_l, 'sum_assd'),
-                safe_sum(dv_trad_total, 'sum_assd') - safe_sum(tabel_total_l, 'sum_assd')
             ],
             'RAFM_Policies': [
                 safe_sum(merged, 'pol_b'),
-                safe_sum(tabel_total_l, 'pol_b'),
-                safe_sum(merged, 'pol_b') - safe_sum(tabel_total_l, 'pol_b')
             ],
             'RAFM_SA': [
                 safe_sum(merged, 'cov_units'),
-                safe_sum(tabel_total_l, 'cov_units'),
-                safe_sum(merged, 'cov_units') - safe_sum(tabel_total_l, 'cov_units')
             ],
             'Diff_Policies': [
                 safe_sum(dv_trad_total, 'pol_num') - safe_sum(merged, 'pol_b'),
-                safe_sum(tabel_total_l, 'pol_num') - safe_sum(tabel_total_l, 'pol_b'),
-                (safe_sum(dv_trad_total, 'pol_num') - safe_sum(merged, 'pol_b')) - 
-                (safe_sum(tabel_total_l, 'pol_num') - safe_sum(tabel_total_l, 'pol_b'))
             ],
             'Diff_SA': [
                 safe_sum(dv_trad_total, 'sum_assd') - safe_sum(merged, 'cov_units'),
-                safe_sum(tabel_total_l, 'sum_assd') - safe_sum(tabel_total_l, 'cov_units'),
-                (safe_sum(dv_trad_total, 'sum_assd') - safe_sum(merged, 'cov_units')) - 
-                (safe_sum(tabel_total_l, 'sum_assd') - safe_sum(tabel_total_l, 'cov_units'))
             ]
         })
 
         # Generate all tables (always active)
         # TABEL 2: CC%
         tabel_2 = filter_goc_by_code(merged, 'CC%')
-        summary_tabel_2 = None
-        if not tabel_2.empty:
-            summary_tabel_2 = pd.DataFrame([{
-                "DV": safe_sum(tabel_2, 'pol_num'),
-                "DV_SA": safe_sum(tabel_2, 'sum_assd'),
-                "RAFM_Output": safe_sum(tabel_2, 'pol_b'),
-                "RAFM_SA": safe_sum(tabel_2, 'cov_units'),
-                "Diff_Policies": safe_sum(tabel_2, 'pol_num') - safe_sum(tabel_2, 'pol_b'),
-                "Diff_SA": safe_sum(tabel_2, 'sum_assd') - safe_sum(tabel_2, 'cov_units')
-            }])
 
         # TABEL 3: H_IDR_NO
-        tabel_3 = filter_goc_by_code(merged, 'H_IDR_NO')
-        summary_tabel_3 = None
+        tabel_3 = filter_goc_by_code(merged, '_H_')
         if not tabel_3.empty:
             tabel_3_processed = tabel_3.copy()
             tabel_3_processed[goc_column] = tabel_3_processed[goc_column].apply(
                 lambda x: '_'.join(str(x).split('_')[0:4]) if str(x).startswith('H_IDR_NO') else x
             )
             tabel_3_processed = tabel_3_processed.groupby([goc_column], as_index=False).sum(numeric_only=True)
-            
-            summary_tabel_3 = pd.DataFrame([{
-                "DV": safe_sum(tabel_3_processed, 'pol_num'),
-                "DV_SA": safe_sum(tabel_3_processed, 'sum_assd'),
-                "RAFM_Output": safe_sum(tabel_3_processed, 'pol_b'),
-                "RAFM_SA": safe_sum(tabel_3_processed, 'cov_units'),
-                "Diff_Policies": safe_sum(tabel_3_processed, 'pol_num') - safe_sum(tabel_3_processed, 'pol_b'),
-                "Diff_SA": safe_sum(tabel_3_processed, 'sum_assd') - safe_sum(tabel_3_processed, 'cov_units')
-            }])
             tabel_3 = tabel_3_processed
 
         # TABEL 4: YR
         tabel_4 = filter_goc_by_code(merged, 'YR')
-        summary_tabel_4 = None
         if not tabel_4.empty:
             tabel_4_processed = tabel_4.copy()
             tabel_4_processed[goc_column] = tabel_4_processed[goc_column].apply(
                 lambda x: '_'.join(str(x).split('_')[1:5])
             )
             tabel_4_processed = tabel_4_processed.groupby([goc_column], as_index=False).sum(numeric_only=True)
-            
-            summary_tabel_4 = pd.DataFrame([{
-                "DV": safe_sum(tabel_4_processed, 'pol_num'),
-                "DV_SA": safe_sum(tabel_4_processed, 'sum_assd'),
-                "RAFM_Output": safe_sum(tabel_4_processed, 'pol_b'),
-                "RAFM_SA": safe_sum(tabel_4_processed, 'cov_units'),
-                "Diff_Policies": safe_sum(tabel_4_processed, 'pol_num') - safe_sum(tabel_4_processed, 'pol_b'),
-                "Diff_SA": safe_sum(tabel_4_processed, 'sum_assd') - safe_sum(tabel_4_processed, 'cov_units')
-            }])
             tabel_4 = tabel_4_processed
 
         # TABEL 5: _C_
         tabel_5 = filter_goc_by_code(merged, '_C_')
-        summary_tabel_5 = None
         if not tabel_5.empty:
             tabel_5_processed = tabel_5.copy()
             tabel_5_processed[goc_column] = tabel_5_processed[goc_column].apply(
                 lambda x: '_'.join(str(x).split('_')[1:5])
             )
             tabel_5_processed = tabel_5_processed.groupby([goc_column], as_index=False).sum(numeric_only=True)
-            
-            summary_tabel_5 = pd.DataFrame([{
-                "DV": safe_sum(tabel_5_processed, 'pol_num'),
-                "DV_SA": safe_sum(tabel_5_processed, 'sum_assd'),
-                "RAFM_Output": safe_sum(tabel_5_processed, 'pol_b'),
-                "RAFM_SA": safe_sum(tabel_5_processed, 'cov_units'),
-                "Diff_Policies": safe_sum(tabel_5_processed, 'pol_num') - safe_sum(tabel_5_processed, 'pol_b'),
-                "Diff_SA": safe_sum(tabel_5_processed, 'sum_assd') - safe_sum(tabel_5_processed, 'cov_units')
-            }])
             tabel_5 = tabel_5_processed
 
         return {
@@ -534,10 +478,6 @@ def run_trad(params):
             'tabel_4': tabel_4,
             'tabel_5': tabel_5,
             'summary_total': summary,
-            'summary_tabel_2': summary_tabel_2,
-            'summary_tabel_3': summary_tabel_3,
-            'summary_tabel_4': summary_tabel_4,
-            'summary_tabel_5': summary_tabel_5,
             'run_name': params.get('run_name', params.get('run', ''))
         }
 
@@ -687,28 +627,6 @@ def run_ul(params):
         # Merge data
         merged = pd.merge(dv_ul_total, run_rafm, on=goc_column, how="outer", suffixes=("_uv_total", "_run_rafm"))
 
-        # Calculate differences with safe column access
-        def safe_get_col(df, col_name):
-            for col in df.columns:
-                if col.lower() == col_name.lower():
-                    return col
-            return None
-
-        pol_num_col = safe_get_col(merged, 'pol_num')
-        total_fund_col = safe_get_col(merged, 'total_fund')
-        pol_b_col = safe_get_col(merged, 'pol_b')
-        rv_av_if_col = safe_get_col(merged, 'RV_AV_IF')
-
-        if pol_num_col and pol_b_col:
-            merged['diff_policies'] = merged[pol_num_col] - merged[pol_b_col]
-        else:
-            merged['diff_policies'] = 0
-
-        if total_fund_col and rv_av_if_col:
-            merged['diff_sa'] = merged[total_fund_col] - merged[rv_av_if_col]
-        else:
-            merged['diff_sa'] = 0
-
         # Generate tables
         tabel_total_l = exclude_goc_by_code(merged, 'gs')
 
@@ -723,54 +641,29 @@ def run_ul(params):
         summary = pd.DataFrame({
             'DV # of Policies': [
                 safe_sum(dv_ul_total, 'pol_num'),
-                safe_sum(tabel_total_l, 'pol_num'),
-                safe_sum(dv_ul_total, 'pol_num') - safe_sum(tabel_total_l, 'pol_num')
             ],
             'DV Fund Value': [
                 safe_sum(dv_ul_total, 'total_fund'),
-                safe_sum(tabel_total_l, 'total_fund'),
-                safe_sum(dv_ul_total, 'total_fund') - safe_sum(tabel_total_l, 'total_fund')
             ],
             'RAFM # of Policies': [
                 safe_sum(run_rafm, 'pol_b'),
-                safe_sum(tabel_total_l, 'pol_b'),
-                safe_sum(run_rafm, 'pol_b') - safe_sum(tabel_total_l, 'pol_b')
             ],
             'RAFM Fund Value': [
                 safe_sum(run_rafm, 'RV_AV_IF'),
-                safe_sum(tabel_total_l, 'RV_AV_IF'),
-                safe_sum(run_rafm, 'RV_AV_IF') - safe_sum(tabel_total_l, 'RV_AV_IF')
             ],
             'Diff # of Policies': [
                 safe_sum(dv_ul_total, 'pol_num') - safe_sum(run_rafm, 'pol_b'),
-                safe_sum(tabel_total_l, 'pol_num') - safe_sum(tabel_total_l, 'pol_b'),
-                (safe_sum(dv_ul_total, 'pol_num') - safe_sum(run_rafm, 'pol_b')) -
-                (safe_sum(tabel_total_l, 'pol_num') - safe_sum(tabel_total_l, 'pol_b'))
             ],
             'Diff Fund Value': [
                 safe_sum(dv_ul_total, 'total_fund') - safe_sum(run_rafm, 'RV_AV_IF'),
-                safe_sum(tabel_total_l, 'total_fund') - safe_sum(tabel_total_l, 'RV_AV_IF'),
-                (safe_sum(dv_ul_total, 'total_fund') - safe_sum(run_rafm, 'RV_AV_IF')) -
-                (safe_sum(tabel_total_l, 'total_fund') - safe_sum(tabel_total_l, 'RV_AV_IF'))
             ]
         })
 
         # TABEL 2: AG_IDR_SH
-        tabel_2 = filter_goc_by_code(merged, 'AG_IDR_SH')
-        summary_tabel_2 = None
-        if not tabel_2.empty:
-            summary_tabel_2 = pd.DataFrame([{
-                "DV": safe_sum(tabel_2, 'pol_num'),
-                "DV Fund": safe_sum(tabel_2, 'total_fund'),
-                "RAFM Output": safe_sum(tabel_2, 'pol_b'),
-                "RAFM Fund": safe_sum(tabel_2, 'RV_AV_IF'),
-                'Diff # of Policies': safe_sum(tabel_2, 'pol_num') - safe_sum(tabel_2, 'pol_b'),
-                'Diff fund': safe_sum(tabel_2, 'total_fund') - safe_sum(tabel_2, 'RV_AV_IF')
-            }])
+        tabel_2 = filter_goc_by_code(merged, 'AG')
 
         # TABEL 3: GS
         tabel_3 = pd.DataFrame()
-        summary_tabel_3 = None
         
         # Get GS data from original RAFM (before excluding GS)
         if not run_rafm_only.empty and goc_col_rafm:
@@ -789,22 +682,12 @@ def run_ul(params):
             tabel_3['diff policies'] = safe_sum(tabel_3, 'pol_num') - safe_sum(tabel_3, 'pol_b')
             tabel_3['diff sa'] = safe_sum(tabel_3, 'total_fund') - safe_sum(tabel_3, 'RV_AV_IF')
 
-            summary_tabel_3 = pd.DataFrame([{
-                "DV": safe_sum(tabel_3, 'pol_num'),
-                "DV Fund": safe_sum(tabel_3, 'total_fund'),
-                "RAFM Output": safe_sum(tabel_3, 'pol_b'),
-                "RAFM Fund": safe_sum(tabel_3, 'RV_AV_IF'),
-                "Diff # of Policies": safe_sum(tabel_3, 'pol_num') - safe_sum(tabel_3, 'pol_b'),
-                "Diff Fund": safe_sum(tabel_3, 'total_fund') - safe_sum(tabel_3, 'RV_AV_IF')
-            }])
         return {
             'product_type': 'UL',
             'tabel_total': tabel_total_l,
             'tabel_2': tabel_2,
             'tabel_3': tabel_3,
             'summary_total': summary,
-            'summary_tabel_2': summary_tabel_2,
-            'summary_tabel_3': summary_tabel_3,
             'run_name': params.get('run_name', params.get('run', ''))
         }
     except Exception as e:
