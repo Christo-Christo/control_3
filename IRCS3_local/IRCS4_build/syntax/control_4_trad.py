@@ -449,7 +449,7 @@ def main(params):
     rafm_manual = rafm_manual[final_cols_manual]
     ############################ HITUNG SUMMARYNYA ###############################
 
-    final = code_rafm.copy()
+    final = code.copy()
     for col in cols_to_compare:
         if col not in code.columns:
             final[col] = pd.NA

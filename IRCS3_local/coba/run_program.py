@@ -222,10 +222,11 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
             ws.write(5, c + 1 + (tablerow2_len * i), item, center_bold)
 
     for i, run_name in enumerate(input_config.tradfilter):
-        if run_name in trad_results and 'ctrlsum_dict' in trad_results[run_name]:
-            ctrlsum = pd.DataFrame([trad_results[run_name]['ctrlsum_dict'].get(run_name, {})])
-            for c, item_ in enumerate(ctrlsum.iloc[0]):
+        if run_name in trad_results and 'summary_total' in trad_results[run_name]:
+            ctrlsum = trad_results[run_name]['summary_total']
+            for c, item_ in enumerate(ctrlsum.iloc[1]):  # baris index 1: Grand Total Summary
                 ws.write(6 + i, c + 1, item_, wb.add_format({'num_format': number_format}))
+
 
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')
@@ -323,10 +324,11 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
             ws.write(5, c + 1 + (4 * i), item, center_bold)
 
     for i, run_name in enumerate(input_config.ulfilter):
-        if run_name in ul_results and 'ctrlsum_dict' in ul_results[run_name]:
-            ctrlsum = pd.DataFrame([ul_results[run_name]['ctrlsum_dict'].get(run_name, {})])
-            for c, item in enumerate(ctrlsum.iloc[0]):
-                ws.write(6 + i, c + 1, item, wb.add_format({'num_format': number_format}))
+        if run_name in ul_results and 'summary_total' in ul_results[run_name]:
+            ctrlsum = ul_results[run_name]['summary_total']
+            for c, item_ in enumerate(ctrlsum.iloc[1]):
+                ws.write(6 + i, c + 1, item_, wb.add_format({'num_format': number_format}))
+
 
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')

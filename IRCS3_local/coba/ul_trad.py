@@ -808,7 +808,6 @@ def run_ul(params):
                 "Diff # of Policies": safe_sum(tabel_3, 'pol_num') - safe_sum(tabel_3, 'pol_b'),
                 "Diff Fund": safe_sum(tabel_3, 'total_fund') - safe_sum(tabel_3, 'RV_AV_IF')
             }])
-
         return {
             'product_type': 'UL',
             'tabel_total': tabel_total_l,
