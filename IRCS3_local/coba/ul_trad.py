@@ -586,7 +586,7 @@ def run_ul(params):
             if col.lower() == 'goc':
                 goc_col_rafm = col
                 break
-        
+        run_rafm_only.columns = [col.upper() for col in run_rafm_only.columns]
         if goc_col_rafm:
             run_rafm_no_gs = run_rafm_only[~run_rafm_only[goc_col_rafm].astype(str).str.contains('GS', case=False, na=False)]
         else:
@@ -617,6 +617,9 @@ def run_ul(params):
         else:
             print("UVSG file not provided or not found - skipping UVSG processing")
 
+        run_rafm_no_gs.columns = [col.upper() for col in run_rafm_no_gs.columns]
+        run_uvsg.columns = [col.upper() for col in run_uvsg.columns]
+
         # Combine RAFM and UVSG
         run_rafm = pd.concat([run_rafm_no_gs, run_uvsg], ignore_index=True)
         
@@ -638,6 +641,8 @@ def run_ul(params):
         total_fund_col = safe_get_col(merged, 'total_fund')
         pol_b_col = safe_get_col(merged, 'pol_b')
         rv_av_if_col = safe_get_col(merged, 'RV_AV_IF')
+        if rv_av_if_col is None:
+            return {"error": "Kolom RV_AV_IF tidak ditemukan"}
 
         merged['diff_policies'] = merged[pol_num_col] - merged[pol_b_col]
         merged['diff_sa'] = merged[total_fund_col] - merged[rv_av_if_col]

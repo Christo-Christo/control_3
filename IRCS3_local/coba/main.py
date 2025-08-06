@@ -224,7 +224,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
     ws.write(1, 1, input_config.valuation_month, yellow)
     ws.write(2, 1, input_config.valuation_rate, yellow)
 
-    for i, run_name in enumerate(input_config.ulfilter):
+    for i, run_name in enumerate(input_config.tradfilter):
         ws.write(6 + i, 0, run_name, yellow)
 
     for c, item in enumerate(header_sum_tablerow):
@@ -236,7 +236,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
         for c, item in enumerate(header_sum_tablerow2):
             ws.write(5, c + 1 + (tablerow2_len * i), item, center_bold)
 
-    for i, run_name in enumerate(input_config.ulfilter):
+    for i, run_name in enumerate(input_config.tradfilter):
         row = 6 + i
         if not run_name:
             continue
@@ -244,29 +244,29 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
         ws.write(row, 0, run_name, yellow)
         
         # === DV (kolom 1) ===
-        ws.write_formula(row, 1, f'=SUM(C{row+1}:F{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 1, f'=SUM(C{row+1}:F{row+1})')
 
         # === RAFM (kolom 6) ===
-        ws.write_formula(row, 6, f'=SUM(H{row+1}:K{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 6, f'=SUM(H{row+1}:K{row+1})')
 
         # === Differences (kolom 11–15) ===
-        ws.write_formula(row, 11, f'=B{row+1}-G{row+1}', wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 12, f'=C{row+1}-H{row+1}', wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 13, f'=D{row+1}-I{row+1}', wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 14, f'=E{row+1}-J{row+1}', wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 15, f'=F{row+1}-K{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 11, f'=B{row+1}-G{row+1}')
+        ws.write_formula(row, 12, f'=C{row+1}-H{row+1}')
+        ws.write_formula(row, 13, f'=D{row+1}-I{row+1}')
+        ws.write_formula(row, 14, f'=E{row+1}-J{row+1}')
+        ws.write_formula(row, 15, f'=F{row+1}-K{row+1}')
 
         # === RAFM Detail (kolom 2–5) ===
-        ws.write_formula(row, 2, f"='{run_name}'!C5", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 3, f"='{run_name}'!S4", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 4, f"='{run_name}'!AA4", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 5, f"='{run_name}'!AI4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 2, f"='{run_name}'!C5")
+        ws.write_formula(row, 3, f"='{run_name}'!S4")
+        ws.write_formula(row, 4, f"='{run_name}'!AA4")
+        ws.write_formula(row, 5, f"='{run_name}'!AI4")
 
         # === DV Detail (kolom 7–10) ===
-        ws.write_formula(row, 7, f"='{run_name}'!E5+'{run_name}'!M4", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 8, f"='{run_name}'!U4", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 9, f"='{run_name}'!AC4", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 10, f"='{run_name}'!AK4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 7, f"='{run_name}'!E5+'{run_name}'!M4")
+        ws.write_formula(row, 8, f"='{run_name}'!U4")
+        ws.write_formula(row, 9, f"='{run_name}'!AC4")
+        ws.write_formula(row, 10, f"='{run_name}'!AK4")
 
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')
@@ -320,7 +320,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
                 for row in range(len(df)):
                     for c, item in enumerate(df.iloc[row]):
                         value = item if not (pd.isna(item) or item == '') else 0
-                        ws.write(6 + row, col_starts[idx] + c, value, wb.add_format({'num_format': number_format, 'border': 1}))
+                        ws.write(6 + row, col_starts[idx] + c, value, wb.add_format({'num_format': number_format,'bg_color': '#92D050', 'bold': True}))
 
                 data_start_row = 6
                 data_end_row = 6 + len(df) - 1
@@ -331,10 +331,10 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
                         col_letter = xl_col_to_name(col_idx)
 
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        ws.write_formula(4, col_idx, sum_formula,wb.add_format({'num_format': number_format}, wb.add_format({'num_format': number_format})))
+                        ws.write_formula(4, col_idx, sum_formula,wb.add_format({'num_format': number_format}))
 
                         diff_formula = f'={col_letter}4 - {col_letter}5'
-                        ws.write_formula(5, col_idx, diff_formula,wb.add_format({'num_format': number_format}, wb.add_format({'num_format': number_format})))
+                        ws.write_formula(5, col_idx, diff_formula,wb.add_format({'num_format': number_format}))
 
                 else:
                     for col_offset in range(1, 7):
@@ -342,7 +342,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
                         col_letter = xl_col_to_name(col_idx)
 
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        ws.write_formula(3,col_idx, sum_formula,wb.add_format({'num_format': number_format}, wb.add_format({'num_format': number_format})))
+                        ws.write_formula(3,col_idx, sum_formula,wb.add_format({'num_format': number_format}))
     wb.close()
 
 
@@ -400,7 +400,7 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         for c, item in enumerate(header_sum_tablerow2):
             ws.write(5, c + 1 + (4 * i), item, center_bold)
 
-    for i, run_name in enumerate(input_config.ulfilter):
+    for i, run_name in enumerate(input_config.tradfilter):
         row = 6 + i
         if not run_name:
             continue
@@ -408,26 +408,26 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         ws.write(row, 0, run_name, yellow)
         
         # === DV (kolom 1) ===
-        ws.write_formula(row, 1, f'=SUM(C{row+1}:E{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 1, f'=SUM(C{row+1}:E{row+1})')
 
         # === RAFM (kolom 6) ===
-        ws.write_formula(row, 5, f'=SUM(G{row+1}:I{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 5, f'=SUM(G{row+1}:I{row+1})')
 
         # === Differences (kolom 11–15) ===
-        ws.write_formula(row, 9, f'=B{row+1}-F{row+1}', wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 10, f'=C{row+1}-G{row+1}', wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 11, f'=D{row+1}-H{row+1}', wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 12, f'=E{row+1}-I{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 9, f'=B{row+1}-F{row+1}')
+        ws.write_formula(row, 10, f'=C{row+1}-G{row+1}')
+        ws.write_formula(row, 11, f'=D{row+1}-H{row+1}')
+        ws.write_formula(row, 12, f'=E{row+1}-I{row+1}')
 
         # === DV Detail (kolom 2–5) ===
-        ws.write_formula(row, 2, f"='{run_name}'!C5", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 3, f"='{run_name}'!S4", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 4, f"='{run_name}'!AA4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 2, f"='{run_name}'!C5")
+        ws.write_formula(row, 3, f"='{run_name}'!S4")
+        ws.write_formula(row, 4, f"='{run_name}'!AA4")
 
         # === RAFM Detail (kolom 7–10) ===
-        ws.write_formula(row, 6, f"='{run_name}'!E5+'{run_name}'!M4", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 7, f"='{run_name}'!U4", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 8, f"='{run_name}'!AC4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 6, f"='{run_name}'!E5+'{run_name}'!M4")
+        ws.write_formula(row, 7, f"='{run_name}'!U4")
+        ws.write_formula(row, 8, f"='{run_name}'!AC4")
 
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')
@@ -480,7 +480,7 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
                 for row in range(len(df)):
                     for c, item in enumerate(df.iloc[row]):
                         value = item if not (pd.isna(item) or item == '') else 0
-                        ws.write(6 + row, col_starts[idx] + c, value,wb.add_format({'num_format': number_format, 'border': 1}))
+                        ws.write(6 + row, col_starts[idx] + c, value,wb.add_format({'num_format': number_format,'bg_color': '#92D050', 'bold': True}))
 
                 data_start_row = 6
                 data_end_row = 6 + len(df) - 1
@@ -493,8 +493,8 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
                         diff_formula = f'={col_letter}4 - {col_letter}5'
 
-                        ws.write_formula(4, col_idx, sum_formula,wb.add_format({'num_format': number_format}, wb.add_format({'num_format': number_format})))
-                        ws.write_formula(5, col_idx, diff_formula,wb.add_format({'num_format': number_format}, wb.add_format({'num_format': number_format})))
+                        ws.write_formula(4, col_idx, sum_formula,wb.add_format({'num_format': number_format}))
+                        ws.write_formula(5, col_idx, diff_formula,wb.add_format({'num_format': number_format}))
 
                 else:  
                     for col_offset in range(1,7):
@@ -502,7 +502,7 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
                         col_letter = xl_col_to_name(col_idx)
 
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        ws.write_formula(3, col_idx, sum_formula,wb.add_format({'num_format': number_format}, wb.add_format({'num_format': number_format})))
+                        ws.write_formula(3, col_idx, sum_formula,wb.add_format({'num_format': number_format}))
     wb.close()
 
 def main(input_sheet_path):
