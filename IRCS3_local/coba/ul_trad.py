@@ -631,9 +631,11 @@ def run_ul(params):
         # Combine RAFM (without GS) and UVSG
         run_rafm = pd.concat([run_rafm_no_gs, run_uvsg], ignore_index=True) if not run_rafm_no_gs.empty or not run_uvsg.empty else pd.DataFrame()
 
-        # Merge data - FIXED: ensure proper column alignment
+        # Merge data - FIXED: ensure proper column structure for UL
         if not run_rafm.empty:
             merged = pd.merge(dv_ul_total, run_rafm, on=goc_column, how="outer")
+            # Fix column order for UL - ensure no extra column between rv_av_if and diff_policies
+            # Standard UL columns should be: GOC, pol_num, total_fund, pol_b, rv_av_if, diff_policies, diff_fund_value
         else:
             merged = dv_ul_total.copy()
             merged['pol_b'] = 0
@@ -660,6 +662,22 @@ def run_ul(params):
 
         merged['diff_policies'] = merged[pol_num_col] - merged[pol_b_col]
         merged['diff_fund_value'] = merged[total_fund_col] - merged[rv_av_if_col]
+
+        # FIXED: Reorder columns to ensure proper structure
+        # Standard order: GOC, pol_num, total_fund, pol_b, rv_av_if, diff_policies, diff_fund_value
+        column_order = [goc_column]
+        if pol_num_col: column_order.append(pol_num_col)
+        if total_fund_col: column_order.append(total_fund_col)
+        if pol_b_col: column_order.append(pol_b_col)
+        if rv_av_if_col: column_order.append(rv_av_if_col)
+        column_order.extend(['diff_policies', 'diff_fund_value'])
+        
+        # Add any remaining columns that aren't in the standard order
+        for col in merged.columns:
+            if col not in column_order:
+                column_order.append(col)
+        
+        merged = merged[column_order]
 
         # Generate tables
         tabel_total_l = exclude_goc_by_code(merged, 'gs')
@@ -694,7 +712,7 @@ def run_ul(params):
         })
 
         # TABEL 2: AG (Tasbih)
-        tabel_2 = filter_goc_by_code(merged, 'AG')
+        tabel_2 = filter_goc_by_code(merged, 'AG_IDR_SH')
 
         # TABEL 3: GS (Group Savings)
         tabel_3 = pd.DataFrame()
@@ -724,7 +742,20 @@ def run_ul(params):
             else:
                 tabel_3['diff_fund_value'] = 0
 
-        # Create summary tables for each section
+            # FIXED: Reorder tabel_3 columns to match standard structure
+            tabel_3_column_order = [goc_column]
+            if pol_num_gs: tabel_3_column_order.append(pol_num_gs)
+            if total_fund_gs: tabel_3_column_order.append(total_fund_gs)
+            if pol_b_gs: tabel_3_column_order.append(pol_b_gs)
+            if rv_av_if_gs: tabel_3_column_order.append(rv_av_if_gs)
+            tabel_3_column_order.extend(['diff_policies', 'diff_fund_value'])
+            
+            # Add any remaining columns
+            for col in tabel_3.columns:
+                if col not in tabel_3_column_order:
+                    tabel_3_column_order.append(col)
+            
+            tabel_3 = tabel_3[tabel_3_column_order]
 
         return {
             'product_type': 'UL',
