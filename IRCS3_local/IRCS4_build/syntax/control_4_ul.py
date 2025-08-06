@@ -158,11 +158,6 @@ def main(params):
     cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name'})
     cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
     cf_argo = cf_argo.drop(columns = ['RAFM File Name','UVSG File Name'])
-    all_cols = cf_argo.columns.tolist()
-    other_cols = [col for col in all_cols if col not in columns_to_sum_argo]
-    ordered_sum_cols_argo = [col for col in columns_to_sum_argo if col in all_cols]
-    final_cols = other_cols + ordered_sum_cols_argo
-    cf_argo = cf_argo[final_cols]
     if 'ARGO File Name' in cf_argo.columns:
         cols = ['ARGO File Name'] + [col for col in cf_argo.columns if col != 'ARGO File Name']
         cf_argo = cf_argo[cols]
@@ -247,19 +242,9 @@ def main(params):
     cf_rafm['pv_clm_surr_pw_n'] = cf_rafm[['pv_surr', 'pv_pw_n']].sum(axis=1)
     cf_rafm['nattr_exp_maint_inv'] = cf_rafm[['nattr_exp_inv', 'nattr_exp_maint']].sum(axis=1)
     cf_rafm['dac_cov_units'] = cf_rafm['cov_units']
-    all_cols_rafm = cf_rafm.columns.tolist()
-    other_cols_rafm = [col for col in all_cols_rafm if col not in columns_to_sum_argo]
-    ordered_sum_cols_rafm = [col for col in columns_to_sum_argo if col in all_cols_rafm]
-    final_cols_rafm = other_cols_rafm + ordered_sum_cols_rafm
-    cf_rafm = cf_rafm[final_cols_rafm]
 
     rafm_manual = pd.read_excel(rafm_manual_path, sheet_name='Sheet1').drop(columns=['No','Update (Y/N)','Shift Dur','Cohort'])
     rafm_manual = rafm_manual.rename(columns={'c_sar': 'u_sar'}).fillna(0)
-    all_cols_manual = rafm_manual.columns.tolist()
-    other_cols_manual = [col for col in all_cols_manual if col not in columns_to_sum_argo]
-    ordered_sum_cols_manual = [col for col in columns_to_sum_argo if col in all_cols_manual]
-    final_cols_manual = other_cols_manual + ordered_sum_cols_manual
-    rafm_manual = rafm_manual[final_cols_manual]
     final = code.copy()
     for col in columns_to_sum_argo:
         if col not in code.columns:

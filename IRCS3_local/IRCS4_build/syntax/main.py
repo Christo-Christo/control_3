@@ -80,52 +80,108 @@ def process_input_file(file_path):
                     {'type': 'no_errors', 'format': border_format}
                 )
 
-            # Tambahkan formula jika sheet nama diawali dengan "checking summary"
             if sheet_name.lower().startswith("checking summary"):
-                # Hitung baris terakhir data (Excel 1-based)
-                last_row = len(df_sheet) + 1
+                nrows, ncols = df_sheet.shape
 
                 if jenis == 'trad':
                     cf_sheet = 'CF ARGO AZTRAD'
                     rafm_sheet_1 = 'RAFM Output AZTRAD'
                     rafm_sheet_2 = 'RAFM Output AZUL_PI'
                     manual_sheet = 'RAFM Output Manual'
-                    formula_expr = (
-                        "='{cf_sheet}'!{col}{row} - '{rafm_sheet_1}'!{col}{row} - "
-                        "'{rafm_sheet_2}'!{col}{row} + '{manual_sheet}'!{col}{row}"
-                    )
+
+                    cf_df = result[cf_sheet]
+                    rafm1_df = result[rafm_sheet_1]
+                    rafm2_df = result[rafm_sheet_2]
+                    manual_df = result[manual_sheet]
+
+                    max_col_cf = xl_col_to_name(cf_df.shape[1] - 1)
+                    max_col_rafm1 = xl_col_to_name(rafm1_df.shape[1] - 1)
+                    max_col_rafm2 = xl_col_to_name(rafm2_df.shape[1] - 1)
+                    max_col_manual = xl_col_to_name(manual_df.shape[1] - 1)
+
+                    max_row_cf = cf_df.shape[0] + 1
+                    max_row_rafm1 = rafm1_df.shape[0] + 1
+                    max_row_rafm2 = rafm2_df.shape[0] + 1
+                    max_row_manual = manual_df.shape[0] + 1
+
+                    for row_idx in range(1, nrows):
+                        for col_idx in range(4, ncols):
+                            col_letter = xl_col_to_name(col_idx)
+                            col_header = f"{col_letter}$1"
+                            row_b = f"$B{row_idx+1}"
+                            row_c = f"$C{row_idx+1}"
+                            row_d = f"$D{row_idx+1}"
+
+                            formula = (
+                                f"=INDEX('{cf_sheet}'!$C$2:${max_col_cf}$2, MATCH({row_b}, '{cf_sheet}'!$B$2:$B${max_row_cf}, 0), MATCH({col_header}, '{cf_sheet}'!$C$1:${max_col_cf}$1, 0))"
+                                f"-INDEX('{rafm_sheet_1}'!$C$2:${max_col_rafm1}$2, MATCH({row_c}, '{rafm_sheet_1}'!$B$2:$B${max_row_rafm1}, 0), MATCH({col_header}, '{rafm_sheet_1}'!$C$1:${max_col_rafm1}$1, 0))"
+                                f"+INDEX('{manual_sheet}'!$C$2:${max_col_manual}$2, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0))"
+                                f"-INDEX('{rafm_sheet_2}'!$C$2:${max_col_rafm2}$2, MATCH({row_d}, '{rafm_sheet_2}'!$B$2:$B${max_row_rafm2}, 0), MATCH({col_header}, '{rafm_sheet_2}'!$C$1:${max_col_rafm2}$1, 0))"
+                            )
+                            worksheet.write_formula(row_idx, col_idx, formula)
+
                 elif jenis == 'ul':
                     cf_sheet = 'CF ARGO AZUL'
                     rafm_sheet = 'RAFM Output AZUL'
                     manual_sheet = 'RAFM Output Manual'
-                    formula_expr = (
-                        "='{cf_sheet}'!{col}{row} - '{rafm_sheet}'!{col}{row} - '{manual_sheet}'!{col}{row}"
-                    )
+
+                    cf_df = result[cf_sheet]
+                    rafm_df = result[rafm_sheet]
+                    manual_df = result[manual_sheet]
+
+                    max_col_cf = xl_col_to_name(cf_df.shape[1] - 1)
+                    max_col_rafm = xl_col_to_name(rafm_df.shape[1] - 1)
+                    max_col_manual = xl_col_to_name(manual_df.shape[1] - 1)
+
+                    max_row_cf = cf_df.shape[0] + 1
+                    max_row_rafm = rafm_df.shape[0] + 1
+                    max_row_manual = manual_df.shape[0] + 1
+
+                    for row_idx in range(1, nrows):
+                        for col_idx in range(3, ncols): 
+                            col_letter = xl_col_to_name(col_idx)
+                            col_header = f"{col_letter}$1"
+                            row_b = f"$B{row_idx+1}"
+                            row_c = f"$C{row_idx+1}"
+
+                            formula = (
+                                f"=INDEX('{cf_sheet}'!$C$2:${max_col_cf}$2, MATCH({row_b}, '{cf_sheet}'!$B$2:$B${max_row_cf}, 0), MATCH({col_header}, '{cf_sheet}'!$C$1:${max_col_cf}$1, 0))"
+                                f"-INDEX('{rafm_sheet}'!$C$2:${max_col_rafm}$2, MATCH({row_c}, '{rafm_sheet}'!$B$2:$B${max_row_rafm}, 0), MATCH({col_header}, '{rafm_sheet}'!$C$1:${max_col_rafm}$1, 0))"
+                                f"-INDEX('{manual_sheet}'!$C$2:${max_col_manual}$2, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0))"
+                            )
+                            worksheet.write_formula(row_idx, col_idx, formula)
+
                 elif jenis == 'reas':
                     cf_sheet = 'CF ARGO REAS'
                     rafm_sheet = 'RAFM Output REAS'
                     manual_sheet = 'RAFM Output Manual'
-                    formula_expr = (
-                        "='{cf_sheet}'!{col}{row} - '{rafm_sheet}'!{col}{row} - '{manual_sheet}'!{col}{row}"
-                    )
-                else:
-                    # Jika jenis tidak dikenali, skip formula
-                    continue
 
-                # Tulis formula per kolom di baris paling bawah data
-                for col_idx, col_name in enumerate(df_sheet.columns):
-                    if col_name in cols_to_sum:
-                        col_letter = xl_col_to_name(col_idx)
-                        formula = formula_expr.format(
-                            cf_sheet=cf_sheet,
-                            rafm_sheet_1=rafm_sheet_1 if jenis == 'trad' else '',
-                            rafm_sheet_2=rafm_sheet_2 if jenis == 'trad' else '',
-                            rafm_sheet=rafm_sheet if jenis in ['ul', 'reas'] else '',
-                            manual_sheet=manual_sheet,
-                            col=col_letter,
-                            row=last_row
-                        )
-                        worksheet.write_formula(last_row - 1, col_idx, formula)
+                    cf_df = result[cf_sheet]
+                    rafm_df = result[rafm_sheet]
+                    manual_df = result[manual_sheet]
+
+                    max_col_cf = xl_col_to_name(cf_df.shape[1] - 1)
+                    max_col_rafm = xl_col_to_name(rafm_df.shape[1] - 1)
+                    max_col_manual = xl_col_to_name(manual_df.shape[1] - 1)
+
+                    max_row_cf = cf_df.shape[0] + 1
+                    max_row_rafm = rafm_df.shape[0] + 1
+                    max_row_manual = manual_df.shape[0] + 1
+
+                    for row_idx in range(1, nrows):
+                        for col_idx in range(3, ncols): 
+                            col_letter = xl_col_to_name(col_idx)
+                            col_header = f"{col_letter}$1"
+                            row_b = f"$B{row_idx+1}"
+                            row_c = f"$C{row_idx+1}"
+
+                            formula = (
+                                f"=INDEX('{cf_sheet}'!$C$2:${max_col_cf}$2, MATCH({row_b}, '{cf_sheet}'!$B$2:$B${max_row_cf}, 0), MATCH({col_header}, '{cf_sheet}'!$C$1:${max_col_cf}$1, 0))"
+                                f"-INDEX('{rafm_sheet}'!$C$2:${max_col_rafm}$2, MATCH({row_c}, '{rafm_sheet}'!$B$2:$B${max_row_rafm}, 0), MATCH({col_header}, '{rafm_sheet}'!$C$1:${max_col_rafm}$1, 0))"
+                                f"-INDEX('{manual_sheet}'!$C$2:${max_col_manual}$2, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0))"
+                            )
+                            worksheet.write_formula(row_idx, col_idx, formula)
+
 
     print(f"✅ Output disimpan di: {output_file}")
     print("📑 Sheet yang diekspor:")

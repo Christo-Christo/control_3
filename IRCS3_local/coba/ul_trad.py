@@ -328,8 +328,13 @@ def run_trad(params):
         # Group by GOC
         dv_trad_total = dv_trad_total.groupby([goc_column], as_index=False).sum(numeric_only=True)
 
-        # Apply USD conversion
-        usd_rate = float(params.get('usdidr', params.get('USDIDR', 1.0)))
+        params_lower = {k.lower(): v for k, v in params.items()}
+
+        if 'usdidr' not in params_lower:
+            return {"error": "Parameter 'usdidr' tidak ditemukan dalam input"}
+
+        usd_rate = float(params_lower['usdidr'])
+        print(f"FX rate USDIDR yang digunakan: {usd_rate}")
         
         # Find sum_assd column
         sum_assd_column = None
@@ -550,8 +555,13 @@ def run_ul(params):
         dv_ul_total = clean_numeric_column(dv_ul_total, 'total_fund')
         dv_ul_total = dv_ul_total.groupby([goc_column], as_index=False).sum(numeric_only=True)
 
-        # Apply USD conversion
-        usd_rate = float(params.get('usdidr', params.get('USDIDR', 1.0)))
+        params_lower = {k.lower(): v for k, v in params.items()}
+
+        if 'usdidr' not in params_lower:
+            return {"error": "Parameter 'usdidr' tidak ditemukan dalam input"}
+
+        usd_rate = float(params_lower['usdidr'])
+        print(f"FX rate USDIDR yang digunakan: {usd_rate}")
         
         # Find total_fund column
         total_fund_column = None
@@ -631,11 +641,9 @@ def run_ul(params):
         # Combine RAFM (without GS) and UVSG
         run_rafm = pd.concat([run_rafm_no_gs, run_uvsg], ignore_index=True) if not run_rafm_no_gs.empty or not run_uvsg.empty else pd.DataFrame()
 
-        # Merge data - FIXED: ensure proper column structure for UL
+        # Merge data - FIXED: Clean column structure for UL
         if not run_rafm.empty:
             merged = pd.merge(dv_ul_total, run_rafm, on=goc_column, how="outer")
-            # Fix column order for UL - ensure no extra column between rv_av_if and diff_policies
-            # Standard UL columns should be: GOC, pol_num, total_fund, pol_b, rv_av_if, diff_policies, diff_fund_value
         else:
             merged = dv_ul_total.copy()
             merged['pol_b'] = 0
@@ -663,21 +671,9 @@ def run_ul(params):
         merged['diff_policies'] = merged[pol_num_col] - merged[pol_b_col]
         merged['diff_fund_value'] = merged[total_fund_col] - merged[rv_av_if_col]
 
-        # FIXED: Reorder columns to ensure proper structure
-        # Standard order: GOC, pol_num, total_fund, pol_b, rv_av_if, diff_policies, diff_fund_value
-        column_order = [goc_column]
-        if pol_num_col: column_order.append(pol_num_col)
-        if total_fund_col: column_order.append(total_fund_col)
-        if pol_b_col: column_order.append(pol_b_col)
-        if rv_av_if_col: column_order.append(rv_av_if_col)
-        column_order.extend(['diff_policies', 'diff_fund_value'])
-        
-        # Add any remaining columns that aren't in the standard order
-        for col in merged.columns:
-            if col not in column_order:
-                column_order.append(col)
-        
-        merged = merged[column_order]
+        # FIXED: Clean column structure - keep only the essential columns
+        essential_columns = [goc_column, pol_num_col, total_fund_col, pol_b_col, rv_av_if_col, 'diff_policies', 'diff_fund_value']
+        merged = merged[essential_columns]
 
         # Generate tables
         tabel_total_l = exclude_goc_by_code(merged, 'gs')
@@ -711,10 +707,12 @@ def run_ul(params):
             ]
         })
 
-        # TABEL 2: AG (Tasbih)
+        # TABEL 2: AG (Tasbih) - FIXED: Clean column structure
         tabel_2 = filter_goc_by_code(merged, 'AG_IDR_SH')
+        if not tabel_2.empty:
+            tabel_2 = tabel_2[essential_columns]
 
-        # TABEL 3: GS (Group Savings)
+        # TABEL 3: GS (Group Savings) - FIXED: Clean column structure
         tabel_3 = pd.DataFrame()
         
         # Get GS data from original RAFM (before excluding GS) and DV
@@ -742,20 +740,10 @@ def run_ul(params):
             else:
                 tabel_3['diff_fund_value'] = 0
 
-            # FIXED: Reorder tabel_3 columns to match standard structure
-            tabel_3_column_order = [goc_column]
-            if pol_num_gs: tabel_3_column_order.append(pol_num_gs)
-            if total_fund_gs: tabel_3_column_order.append(total_fund_gs)
-            if pol_b_gs: tabel_3_column_order.append(pol_b_gs)
-            if rv_av_if_gs: tabel_3_column_order.append(rv_av_if_gs)
-            tabel_3_column_order.extend(['diff_policies', 'diff_fund_value'])
-            
-            # Add any remaining columns
-            for col in tabel_3.columns:
-                if col not in tabel_3_column_order:
-                    tabel_3_column_order.append(col)
-            
-            tabel_3 = tabel_3[tabel_3_column_order]
+            # FIXED: Clean column structure for tabel_3
+            tabel_3_essential = [goc_column, pol_num_gs, total_fund_gs, pol_b_gs, rv_av_if_gs, 'diff_policies', 'diff_fund_value']
+            tabel_3_essential = [col for col in tabel_3_essential if col is not None and col in tabel_3.columns]
+            tabel_3 = tabel_3[tabel_3_essential]
 
         return {
             'product_type': 'UL',

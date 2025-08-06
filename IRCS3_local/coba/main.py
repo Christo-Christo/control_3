@@ -199,6 +199,7 @@ def convert_trad_result_to_standard(result):
 def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
     wb = xlsxwriter.Workbook(input_config.output_trad, {'nan_inf_to_errors': True})
     number_format = '_(* #,##0_);_(* (#,##0)_);_(* "-"_);_(@_)'
+    bordered_format = wb.add_format({'border': 1})
 
     header_sum_tablerow = ['DV', 'RAFM', 'Differences']
     header_sum_tablerow2 = ['Total', 'Trad-Life inc. BTPN', 'Trad-Health non-YRT', 'Trad-Health YRT', 'Trad-C']
@@ -227,7 +228,14 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
     ws.write(2, 1, input_config.valuation_rate, yellow)
 
     for i, run_name in enumerate(input_config.tradfilter):
-        ws.write(6 + i, 0, run_name, yellow)
+        row = 6 + i
+        if not run_name:
+            continue
+
+        ws.write(row, 0, run_name, yellow)
+
+        for col in range(1, 17):  
+            ws.write_blank(row, col, None, bordered_format)
 
     for c, item in enumerate(header_sum_tablerow):
         ws.merge_range(4, 1 + (tablerow2_len * c), 4, tablerow2_len + (tablerow2_len * c), item, center_merge)
@@ -281,7 +289,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
     
     # Data formats (no green background, with border)
     data_bold_fmt = wb.add_format({'bold': True, 'border': 1})  # GOC column - bold with border
-    data_number_fmt = wb.add_format({'num_format': number_format, 'border': 1})  # Data columns - border only
+    data_number_fmt = wb.add_format({'num_format': number_format})  # Data columns - border only
 
     for run_name in input_config.tradfilter:
         if run_name not in trad_results:
@@ -382,6 +390,7 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
     number_format = '_(* #,##0_);_(* (#,##0)_);_(* "-"_);_(@_)'
     header_sum_tablerow = ['DV', 'RAFM', 'Differences']
     header_sum_tablerow2 = ['Total', 'UL & SH & PI', 'Tasbih', 'GS']
+    bordered_format = wb.add_format({'border': 1})
 
     ws = wb.add_worksheet('Control and Summary')
     ws.freeze_panes(0, 1)
@@ -405,8 +414,15 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
     ws.write(1, 1, input_config.valuation_month, yellow)
     ws.write(2, 1, input_config.valuation_rate, yellow)
 
-    for i, run_name in enumerate(input_config.ulfilter):
-        ws.write(6 + i, 0, run_name, yellow)
+    for i, run_name in enumerate(input_config.tradfilter):
+        row = 6 + i
+        if not run_name:
+            continue
+
+        ws.write(row, 0, run_name, yellow)
+
+        for col in range(1, 17):
+            ws.write_blank(row, col, None, bordered_format)
 
     for c, item in enumerate(header_sum_tablerow):
         ws.merge_range(4, 1 + (4 * c), 4, 4 + (4 * c), item, center_merge)
@@ -443,9 +459,9 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         ws.write_formula(row, 4, f"='{run_name}'!S4", wb.add_format({'num_format': number_format}))
 
         # === RAFM Detail (kolom 6-8) ===
-        ws.write_formula(row, 6, f"='{run_name}'!E5+'{run_name}'!M4", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 7, f"='{run_name}'!N4", wb.add_format({'num_format': number_format}))
-        ws.write_formula(row, 8, f"='{run_name}'!V4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 6, f"='{run_name}'!E5+", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 7, f"='{run_name}'!M4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 8, f"='{run_name}'!U4", wb.add_format({'num_format': number_format}))
 
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')
@@ -458,7 +474,7 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
     
     # Data formats (no green background, with border)
     data_bold_fmt = wb.add_format({'bold': True, 'border': 1})  # GOC column - bold with border
-    data_number_fmt = wb.add_format({'num_format': number_format, 'border': 1})  # Data columns - border only
+    data_number_fmt = wb.add_format({'num_format': number_format})  # Data columns - border only
 
     for run_name in input_config.ulfilter:
         if run_name not in ul_results:

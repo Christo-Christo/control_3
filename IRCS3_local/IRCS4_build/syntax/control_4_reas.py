@@ -135,11 +135,6 @@ def main(params):
     cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name', 'DAC_COV_UNITS': 'dac_cov_units'})
     cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
     cf_argo = cf_argo.drop(columns = ['RAFM File Name'])
-    all_cols = cf_argo.columns.tolist()
-    other_cols = [col for col in all_cols if col not in columns_to_sum_argo]
-    ordered_sum_cols_argo = [col for col in columns_to_sum_argo if col in all_cols]
-    final_cols = other_cols + ordered_sum_cols_argo
-    cf_argo = cf_argo[final_cols]
     file_paths_rafm = [f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx')) if not os.path.basename(f).startswith('~$')]
     file_entries = [(f, os.path.splitext(os.path.basename(f))[0]) for f in file_paths_rafm]
 
@@ -213,20 +208,10 @@ def main(params):
 
     cf_rafm = cf_rafm_merge.drop(columns=['ARGO File Name'])
     cf_rafm['dac_cov_units'] = cf_rafm['cov_units']
-    all_cols_rafm = cf_rafm.columns.tolist()
-    other_cols_rafm = [col for col in all_cols_rafm if col not in columns_to_sum_argo]
-    ordered_sum_cols_rafm = [col for col in columns_to_sum_argo if col in all_cols_rafm]
-    final_cols_rafm = other_cols_rafm + ordered_sum_cols_rafm
-    cf_rafm = cf_rafm[final_cols_rafm]
 
     rafm_manual = pd.read_excel(rafm_manual_path, sheet_name = 'Sheet1',engine = 'openpyxl')
     rafm_manual = rafm_manual.drop (columns = ['No'])
     rafm_manual = rafm_manual.fillna(0)
-    all_cols_manual = rafm_manual.columns.tolist()
-    other_cols_manual = [col for col in all_cols_manual if col not in columns_to_sum_argo]
-    ordered_sum_cols_manual = [col for col in columns_to_sum_argo if col in all_cols_manual]
-    final_cols_manual = other_cols_manual + ordered_sum_cols_manual
-    rafm_manual = rafm_manual[final_cols_manual]
 
     final = code.copy()
     for col in cols_to_compare:

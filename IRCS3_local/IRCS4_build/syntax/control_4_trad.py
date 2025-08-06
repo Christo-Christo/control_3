@@ -273,11 +273,6 @@ def main(params):
     cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name'})
     cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
     cf_argo = cf_argo.drop(columns = ['RAFM File Name','UVSG File Name'])
-    all_cols = cf_argo.columns.tolist()
-    other_cols = [col for col in all_cols if col not in cols_to_compare]
-    ordered_sum_cols_argo = [col for col in cols_to_compare if col in all_cols]
-    final_cols = other_cols + ordered_sum_cols_argo
-    cf_argo = cf_argo[final_cols]
     file_paths_rafm = [f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx')) if not os.path.basename(f).startswith('~$')]
     file_entries = [
     (f, os.path.splitext(os.path.basename(f))[0], global_filter_rafm)
@@ -370,11 +365,6 @@ def main(params):
     for col in nattr_exp:
         cf_rafm[col] = cf_rafm[col].astype(str).str.replace(',', '').astype(float)
     cf_rafm['nattr_exp'] = cf_rafm['nattr_exp_acq'] + cf_rafm['nattr_exp_inv'] + cf_rafm['nattr_exp_maint']
-    all_cols_rafm = cf_rafm.columns.tolist()
-    other_cols_rafm = [col for col in all_cols_rafm if col not in cols_to_compare]
-    ordered_sum_cols_rafm = [col for col in cols_to_compare if col in all_cols_rafm]
-    final_cols_rafm = other_cols_rafm + ordered_sum_cols_rafm
-    cf_rafm = cf_rafm[final_cols_rafm]
     file_paths_uvsg = [f for f in glob.glob(os.path.join(folder_path_uvsg, '*.xlsx')) if not os.path.basename(f).startswith('~$')]
 
     summary_rows_uvsg = []
@@ -432,21 +422,11 @@ def main(params):
     uvsg_merged = pd.merge(code_uvsg, uvsg, on="UVSG File Name", how="left")
     uvsg_merged.fillna(0, inplace=True)
     uvsg = uvsg_merged.drop(columns=['RAFM File Name'])
-    all_cols_uvsg = uvsg.columns.tolist()
-    other_cols_uvsg = [col for col in all_cols_uvsg if col not in cols_to_compare]
-    ordered_sum_cols_uvsg = [col for col in cols_to_compare if col in all_cols_uvsg]
-    final_cols_uvsg = other_cols_uvsg + ordered_sum_cols_uvsg
-    uvsg = uvsg[final_cols_uvsg]
     #################################### RAFM MANUAL #####################################
     rafm_manual = pd.read_excel(rafm_manual_path, sheet_name = 'Sheet1',engine = 'openpyxl')
     rafm_manual = rafm_manual.drop (columns = ['No','Update (Y/N)','Shift Dur','Cohort','C_sar'])
     rafm_manual = rafm_manual.fillna(0)
     rafm_manual # JADI SHEET RAFM MANUAL
-    all_cols_manual = rafm_manual.columns.tolist()
-    other_cols_manual = [col for col in all_cols_manual if col not in cols_to_compare]
-    ordered_sum_cols_manual = [col for col in cols_to_compare if col in all_cols_manual]
-    final_cols_manual = other_cols_manual + ordered_sum_cols_manual
-    rafm_manual = rafm_manual[final_cols_manual]
     ############################ HITUNG SUMMARYNYA ###############################
 
     final = code.copy()
