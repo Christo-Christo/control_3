@@ -613,7 +613,7 @@ def run_ul(params):
                 run_uvsg = clean_numeric_column(run_uvsg, 'rv_av_if')
                 # Standardize column name
                 if 'rv_av_if' in run_uvsg.columns:
-                    run_uvsg = run_uvsg.rename(columns={'rv_av_if': 'rv_av_if'})
+                    run_uvsg = run_uvsg.rename(columns={'rv_av_if': 'RV_AV_IF'})
         else:
             print("UVSG file not provided or not found - skipping UVSG processing")
 

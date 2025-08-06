@@ -244,10 +244,10 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
         ws.write(row, 0, run_name, yellow)
         
         # === DV (kolom 1) ===
-        ws.write_formula(row, 1, f'=SUM(C{row+1}:F{row+1}, wb.add_format({'num_format': number_format}))')
+        ws.write_formula(row, 1, f'=SUM(C{row+1}:F{row+1}', wb.add_format({'num_format': number_format}))
 
         # === RAFM (kolom 6) ===
-        ws.write_formula(row, 6, f'=SUM(H{row+1}:K{row+1}, wb.add_format({'num_format': number_format}))')
+        ws.write_formula(row, 6, f'=SUM(H{row+1}:K{row+1}', wb.add_format({'num_format': number_format}))
 
         # === Differences (kolom 11–15) ===
         ws.write_formula(row, 11, f'=B{row+1}-G{row+1}', wb.add_format({'num_format': number_format}))
@@ -408,10 +408,10 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         ws.write(row, 0, run_name, yellow)
         
         # === DV (kolom 1) ===
-        ws.write_formula(row, 1, f'=SUM(C{row+1}:E{row+1}, wb.add_format({'num_format': number_format}))')
+        ws.write_formula(row, 1, f'=SUM(C{row+1}:E{row+1}', wb.add_format({'num_format': number_format}))
 
         # === RAFM (kolom 6) ===
-        ws.write_formula(row, 5, f'=SUM(G{row+1}:I{row+1}, wb.add_format({'num_format': number_format}))')
+        ws.write_formula(row, 5, f'=SUM(G{row+1}:I{row+1}', wb.add_format({'num_format': number_format}))
 
         # === Differences (kolom 11–15) ===
         ws.write_formula(row, 9, f'=B{row+1}-F{row+1}', wb.add_format({'num_format': number_format}))
