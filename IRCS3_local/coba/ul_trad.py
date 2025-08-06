@@ -331,10 +331,10 @@ def run_trad(params):
         params_lower = {k.lower(): v for k, v in params.items()}
 
         if 'usdidr' not in params_lower:
-            return {"error": "Parameter 'usdidr' tidak ditemukan dalam input"}
-
-        usd_rate = float(params_lower['usdidr'])
-        print(f"FX rate USDIDR yang digunakan: {usd_rate}")
+            print("❌ Parameter 'usdidr' tidak ditemukan dalam input")
+        else:
+            usd_rate = (params_lower['usdidr'])
+            print(f"✅ FX rate USDIDR yang digunakan: {usd_rate}")
         
         # Find sum_assd column
         sum_assd_column = None
@@ -558,10 +558,10 @@ def run_ul(params):
         params_lower = {k.lower(): v for k, v in params.items()}
 
         if 'usdidr' not in params_lower:
-            return {"error": "Parameter 'usdidr' tidak ditemukan dalam input"}
-
-        usd_rate = float(params_lower['usdidr'])
-        print(f"FX rate USDIDR yang digunakan: {usd_rate}")
+            print("❌ Parameter 'usdidr' tidak ditemukan dalam input")
+        else:
+            usd_rate = (params_lower['usdidr'])
+            print(f"✅ FX rate USDIDR yang digunakan: {usd_rate}")
         
         # Find total_fund column
         total_fund_column = None
