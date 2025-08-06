@@ -379,7 +379,7 @@ def run_trad(params):
             else:
                 run_rafm = run_rafm_only.copy()
             
-            merged = pd.merge(dv_trad_total, run_rafm, on=goc_column, how="outer", suffixes=("_trad", "_rafm"))
+            merged = pd.merge(dv_trad_total, run_rafm, on=goc_column, how="outer")
             merged_cols = merged.columns.tolist()
             merged_cols[3], merged_cols[4] = merged_cols[4], merged_cols[3]
             merged = merged[merged_cols]
@@ -625,7 +625,7 @@ def run_ul(params):
             run_rafm = run_rafm.rename(columns={goc_col_rafm: goc_column})
 
         # Merge data
-        merged = pd.merge(dv_ul_total, run_rafm, on=goc_column, how="outer", suffixes=("_uv_total", "_run_rafm"))
+        merged = pd.merge(dv_ul_total, run_rafm, on=goc_column, how="outer")
         
         # Calculate differences with safe column access
         def safe_get_col(df, col_name):
@@ -694,8 +694,8 @@ def run_ul(params):
             tabel_3 = pd.merge(dv_gs, tabel_gs_rafm, on=goc_column, how="outer", suffixes=("_uv_total", "_run_rafm"))
             tabel_3.fillna(0, inplace=True)
 
-            tabel_3['diff policies'] = safe_sum(tabel_3, 'pol_num') - safe_sum(tabel_3, 'pol_b')
-            tabel_3['diff sa'] = safe_sum(tabel_3, 'total_fund') - safe_sum(tabel_3, 'RV_AV_IF')
+            tabel_3['diff policies'] = tabel_3['pol_num'] - tabel_3['pol_b']
+            tabel_3['diff sa'] = tabel_3['total_fund'] - tabel_3['RV_AV_IF']
 
         return {
             'product_type': 'UL',
