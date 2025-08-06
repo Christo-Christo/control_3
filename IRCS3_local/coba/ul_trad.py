@@ -636,6 +636,14 @@ def run_ul(params):
                 if col.lower() == col_name.lower():
                     return col
             return None
+        goc_col_dv = safe_get_col(dv_ul_total, 'goc')
+        goc_col_rafm = safe_get_col(run_rafm, 'goc')
+
+        if not goc_col_dv or not goc_col_rafm:
+            return {"error": "Kolom 'goc' tidak ditemukan"}
+
+        dv_ul_total = dv_ul_total.rename(columns={goc_col_dv: 'goc'})
+        run_rafm = run_rafm.rename(columns={goc_col_rafm: 'goc'})
 
         pol_num_col = safe_get_col(merged, 'pol_num')
         total_fund_col = safe_get_col(merged, 'total_fund')
