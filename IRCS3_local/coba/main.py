@@ -143,7 +143,7 @@ def run_all_configurations(excel_path):
     trad_results = {}
     ul_results = {}
 
-    max_workers = max(8, (os.cpu_count() or 1) * 4)
+    max_workers = os.cpu_count()
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_type = {}
 
@@ -228,7 +228,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
     ws.write(1, 1, input_config.valuation_month, yellow)
     ws.write(2, 1, input_config.valuation_rate, yellow)
 
-    for i, run_name in enumerate(input_config.ulfilter):
+    for i, run_name in enumerate(input_config.tradfilter):
         ws.write(6 + i, 0, run_name, border_yellow)
 
     for c, item in enumerate(header_sum_tablerow):
