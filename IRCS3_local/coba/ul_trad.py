@@ -346,11 +346,6 @@ def run_trad(params):
         run_rafm_idr = load_excel_sheet_safely(path_rafm, 'extraction_IDR', ['GOC', 'period', 'cov_units', 'pol_b'])
         run_rafm_usd = load_excel_sheet_safely(path_rafm, 'extraction_USD', ['GOC', 'period', 'cov_units', 'pol_b'])
 
-        # Filter period = 0
-        for df_rafm in [run_rafm_idr, run_rafm_usd]:
-            if not df_rafm.empty and 'period' in df_rafm.columns:
-                df_rafm = df_rafm[df_rafm['period'].astype(str) == '0']
-                df_rafm = df_rafm.drop(columns=["period"], errors='ignore')
         # Filter period = 0 and drop period column
         if not run_rafm_idr.empty:
             run_rafm_idr = run_rafm_idr[run_rafm_idr['period'].astype(str) == '0']
@@ -490,6 +485,7 @@ def run_ul(params):
         path_dv = params.get('path_dv', '')
         path_rafm = params.get('path_rafm', '')
         path_uvsg = params.get('path_uvsg', '')  # Optional path
+        
         if not path_dv or not os.path.isfile(path_dv):
             return {"error": f"File DV tidak ditemukan atau path kosong: {path_dv}"}
         if not path_rafm or not os.path.isfile(path_rafm):
@@ -503,7 +499,8 @@ def run_ul(params):
         
         if dv_ul.empty:
             return {"error": "File DV kosong atau tidak dapat dibaca"} 
-        dv_ul, dv_column_mapping = make_columns_case_insensitive(dv_ul)
+            
+        # Apply filters
         dv_ul_total = apply_filters(dv_ul, params)
         
         # Drop unnecessary columns (case-insensitive)
@@ -517,7 +514,7 @@ def run_ul(params):
         
         dv_ul_total = dv_ul_total.drop(columns=existing_columns_to_drop, errors='ignore')
 
-        # Find GOC column
+        # Find GOC column (case-insensitive)
         goc_column = None
         for col in dv_ul_total.columns:
             if col.lower() == 'goc':
@@ -529,6 +526,8 @@ def run_ul(params):
 
         # Process GOC
         def sortir(name):
+            if not isinstance(name, str) or not name:
+                return ''
             parts = [p for p in str(name).split('_') if p]
             year_index = -1
             for i, part in enumerate(parts):
@@ -547,6 +546,7 @@ def run_ul(params):
             return '_'.join(parts[start_index:year_index+1])
 
         dv_ul_total[goc_column] = dv_ul_total[goc_column].apply(sortir)
+        dv_ul_total = clean_numeric_column(dv_ul_total, 'pol_num')
         dv_ul_total = clean_numeric_column(dv_ul_total, 'total_fund')
         dv_ul_total = dv_ul_total.groupby([goc_column], as_index=False).sum(numeric_only=True)
 
@@ -567,6 +567,7 @@ def run_ul(params):
         # Load RAFM data with case-insensitive column handling
         run_rafm_idr = load_excel_sheet_safely(path_rafm, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
         run_rafm_usd = load_excel_sheet_safely(path_rafm, 'extraction_USD', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
+        
         # Filter period = 0
         if not run_rafm_idr.empty:
             run_rafm_idr = run_rafm_idr[run_rafm_idr['period'].astype(str) == '0']
@@ -575,22 +576,25 @@ def run_ul(params):
         if not run_rafm_usd.empty:
             run_rafm_usd = run_rafm_usd[run_rafm_usd['period'].astype(str) == '0']
             run_rafm_usd = run_rafm_usd.drop(columns=["period"])
+
         # Combine RAFM data
         run_rafm_only = pd.concat([run_rafm_idr, run_rafm_usd], ignore_index=True)
         if not run_rafm_only.empty:
             run_rafm_only = clean_numeric_column(run_rafm_only, 'pol_b')
-            run_rafm_only = clean_numeric_column(run_rafm_only, 'RV_AV_IF')
-        # Exclude GS from RAFM
-        goc_col_rafm = None
-        for col in run_rafm_only.columns:
-            if col.lower() == 'goc':
-                goc_col_rafm = col
-                break
-        run_rafm_only.columns = [col.upper() for col in run_rafm_only.columns]
-        if goc_col_rafm:
-            run_rafm_no_gs = run_rafm_only[~run_rafm_only[goc_col_rafm].astype(str).str.contains('GS', case=False, na=False)]
-        else:
-            run_rafm_no_gs = run_rafm_only.copy()
+            run_rafm_only = clean_numeric_column(run_rafm_only, 'rv_av_if')
+            
+            # Find and standardize GOC column in RAFM
+            goc_col_rafm = None
+            for col in run_rafm_only.columns:
+                if col.lower() == 'goc':
+                    goc_col_rafm = col
+                    break
+            
+            if goc_col_rafm and goc_col_rafm != goc_column:
+                run_rafm_only = run_rafm_only.rename(columns={goc_col_rafm: goc_column})
+
+        # Exclude GS from RAFM for main processing
+        run_rafm_no_gs = run_rafm_only[~run_rafm_only[goc_column].astype(str).str.contains('GS', case=False, na=False)] if not run_rafm_only.empty else pd.DataFrame()
 
         # Load UVSG data if provided (OPTIONAL)
         run_uvsg = pd.DataFrame()
@@ -611,24 +615,31 @@ def run_ul(params):
             if not run_uvsg.empty:
                 run_uvsg = clean_numeric_column(run_uvsg, 'pol_b')
                 run_uvsg = clean_numeric_column(run_uvsg, 'rv_av_if')
-                # Standardize column name
-                if 'rv_av_if' in run_uvsg.columns:
-                    run_uvsg = run_uvsg.rename(columns={'rv_av_if': 'RV_AV_IF'})
+                
+                # Find and standardize GOC column in UVSG
+                goc_col_uvsg = None
+                for col in run_uvsg.columns:
+                    if col.lower() == 'goc':
+                        goc_col_uvsg = col
+                        break
+                
+                if goc_col_uvsg and goc_col_uvsg != goc_column:
+                    run_uvsg = run_uvsg.rename(columns={goc_col_uvsg: goc_column})
         else:
             print("UVSG file not provided or not found - skipping UVSG processing")
 
-        run_rafm_no_gs.columns = [col.upper() for col in run_rafm_no_gs.columns]
-        run_uvsg.columns = [col.upper() for col in run_uvsg.columns]
+        # Combine RAFM (without GS) and UVSG
+        run_rafm = pd.concat([run_rafm_no_gs, run_uvsg], ignore_index=True) if not run_rafm_no_gs.empty or not run_uvsg.empty else pd.DataFrame()
 
-        # Combine RAFM and UVSG
-        run_rafm = pd.concat([run_rafm_no_gs, run_uvsg], ignore_index=True)
-        
-        # Rename GOC column to match DV data
-        if goc_col_rafm and goc_col_rafm in run_rafm.columns:
-            run_rafm = run_rafm.rename(columns={goc_col_rafm: goc_column})
+        # Merge data - FIXED: ensure proper column alignment
+        if not run_rafm.empty:
+            merged = pd.merge(dv_ul_total, run_rafm, on=goc_column, how="outer")
+        else:
+            merged = dv_ul_total.copy()
+            merged['pol_b'] = 0
+            merged['rv_av_if'] = 0
 
-        # Merge data
-        merged = pd.merge(dv_ul_total, run_rafm, on=goc_column, how="outer")
+        merged.fillna(0, inplace=True)
         
         # Calculate differences with safe column access
         def safe_get_col(df, col_name):
@@ -636,24 +647,19 @@ def run_ul(params):
                 if col.lower() == col_name.lower():
                     return col
             return None
-        goc_col_dv = safe_get_col(dv_ul_total, 'goc')
-        goc_col_rafm = safe_get_col(run_rafm, 'goc')
-
-        if not goc_col_dv or not goc_col_rafm:
-            return {"error": "Kolom 'goc' tidak ditemukan"}
-
-        dv_ul_total = dv_ul_total.rename(columns={goc_col_dv: 'goc'})
-        run_rafm = run_rafm.rename(columns={goc_col_rafm: 'goc'})
 
         pol_num_col = safe_get_col(merged, 'pol_num')
         total_fund_col = safe_get_col(merged, 'total_fund')
         pol_b_col = safe_get_col(merged, 'pol_b')
-        rv_av_if_col = safe_get_col(merged, 'RV_AV_IF')
-        if rv_av_if_col is None:
-            return {"error": "Kolom RV_AV_IF tidak ditemukan"}
+        rv_av_if_col = safe_get_col(merged, 'rv_av_if')
+
+        if not pol_num_col or not pol_b_col:
+            return {"error": "Kolom pol_num atau pol_b tidak ditemukan"}
+        if not total_fund_col or not rv_av_if_col:
+            return {"error": "Kolom total_fund atau rv_av_if tidak ditemukan"}
 
         merged['diff_policies'] = merged[pol_num_col] - merged[pol_b_col]
-        merged['diff_sa'] = merged[total_fund_col] - merged[rv_av_if_col]
+        merged['diff_fund_value'] = merged[total_fund_col] - merged[rv_av_if_col]
 
         # Generate tables
         tabel_total_l = exclude_goc_by_code(merged, 'gs')
@@ -677,38 +683,48 @@ def run_ul(params):
                 safe_sum(run_rafm, 'pol_b'),
             ],
             'RAFM Fund Value': [
-                safe_sum(run_rafm, 'RV_AV_IF'),
+                safe_sum(run_rafm, 'rv_av_if'),
             ],
             'Diff # of Policies': [
                 safe_sum(dv_ul_total, 'pol_num') - safe_sum(run_rafm, 'pol_b'),
             ],
             'Diff Fund Value': [
-                safe_sum(dv_ul_total, 'total_fund') - safe_sum(run_rafm, 'RV_AV_IF'),
+                safe_sum(dv_ul_total, 'total_fund') - safe_sum(run_rafm, 'rv_av_if'),
             ]
         })
 
-        # TABEL 2: AG_IDR_SH
+        # TABEL 2: AG (Tasbih)
         tabel_2 = filter_goc_by_code(merged, 'AG')
 
-        # TABEL 3: GS
+        # TABEL 3: GS (Group Savings)
         tabel_3 = pd.DataFrame()
         
-        # Get GS data from original RAFM (before excluding GS)
-        if not run_rafm_only.empty and goc_col_rafm:
-            tabel_gs_rafm = filter_goc_by_code(run_rafm_only, 'GS')
-            if not tabel_gs_rafm.empty:
-                tabel_gs_rafm = tabel_gs_rafm.rename(columns={goc_col_rafm: goc_column})
-        else:
-            tabel_gs_rafm = pd.DataFrame()
-        
+        # Get GS data from original RAFM (before excluding GS) and DV
         dv_gs = filter_goc_by_code(dv_ul_total, 'GS')
+        rafm_gs = filter_goc_by_code(run_rafm_only, 'GS') if not run_rafm_only.empty else pd.DataFrame()
 
-        if not dv_gs.empty or not tabel_gs_rafm.empty:
-            tabel_3 = pd.merge(dv_gs, tabel_gs_rafm, on=goc_column, how="outer", suffixes=("_uv_total", "_run_rafm"))
+        if not dv_gs.empty or not rafm_gs.empty:
+            # Merge GS data properly
+            tabel_3 = pd.merge(dv_gs, rafm_gs, on=goc_column, how="outer", suffixes=("", "_rafm"))
             tabel_3.fillna(0, inplace=True)
 
-            tabel_3['diff policies'] = tabel_3['pol_num'] - tabel_3['pol_b']
-            tabel_3['diff sa'] = tabel_3['total_fund'] - tabel_3['RV_AV_IF']
+            # Fix column selection to avoid suffix issues
+            pol_num_gs = safe_get_col(tabel_3, 'pol_num')
+            total_fund_gs = safe_get_col(tabel_3, 'total_fund')
+            pol_b_gs = safe_get_col(tabel_3, 'pol_b')
+            rv_av_if_gs = safe_get_col(tabel_3, 'rv_av_if')
+
+            if pol_num_gs and pol_b_gs:
+                tabel_3['diff_policies'] = tabel_3[pol_num_gs] - tabel_3[pol_b_gs]
+            else:
+                tabel_3['diff_policies'] = 0
+                
+            if total_fund_gs and rv_av_if_gs:
+                tabel_3['diff_fund_value'] = tabel_3[total_fund_gs] - tabel_3[rv_av_if_gs]
+            else:
+                tabel_3['diff_fund_value'] = 0
+
+        # Create summary tables for each section
 
         return {
             'product_type': 'UL',
@@ -718,5 +734,9 @@ def run_ul(params):
             'summary_total': summary,
             'run_name': params.get('run_name', params.get('run', ''))
         }
+        
     except Exception as e:
-        return {"error": f"Error in run_ul: {str(e)}"}
+        import traceback
+        error_msg = f"Error in run_ul: {str(e)}\nTraceback: {traceback.format_exc()}"
+        print(error_msg)
+        return {"error": error_msg}

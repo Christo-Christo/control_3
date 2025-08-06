@@ -86,9 +86,11 @@ def get_valuation_info_and_filters(excel_path):
         valuation_year = None
         valuation_month = None
         valuation_rate = None
+        
         for _, row in df_input_setting.iterrows():
-            cat = str(row.get('Category', '')).strip().lower()
-            val = row.get('Value', None)
+            cat = str(row.get('Category', '')).strip()
+            val = row.get('Path', None)  # Changed from 'Value' to 'Path' to match your config
+            
             if cat == 'Valuation Year':
                 valuation_year = val
             elif cat == 'Valuation Month':
@@ -244,35 +246,40 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
         ws.write(row, 0, run_name, yellow)
         
         # === DV (kolom 1) ===
-        ws.write_formula(row, 1, f'=SUM(C{row+1}:F{row+1})')
+        ws.write_formula(row, 1, f'=SUM(C{row+1}:F{row+1})', wb.add_format({'num_format': number_format}))
 
         # === RAFM (kolom 6) ===
-        ws.write_formula(row, 6, f'=SUM(H{row+1}:K{row+1})')
+        ws.write_formula(row, 6, f'=SUM(H{row+1}:K{row+1})', wb.add_format({'num_format': number_format}))
 
         # === Differences (kolom 11–15) ===
-        ws.write_formula(row, 11, f'=B{row+1}-G{row+1}')
-        ws.write_formula(row, 12, f'=C{row+1}-H{row+1}')
-        ws.write_formula(row, 13, f'=D{row+1}-I{row+1}')
-        ws.write_formula(row, 14, f'=E{row+1}-J{row+1}')
-        ws.write_formula(row, 15, f'=F{row+1}-K{row+1}')
+        ws.write_formula(row, 11, f'=B{row+1}-G{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 12, f'=C{row+1}-H{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 13, f'=D{row+1}-I{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 14, f'=E{row+1}-J{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 15, f'=F{row+1}-K{row+1}', wb.add_format({'num_format': number_format}))
 
-        # === RAFM Detail (kolom 2–5) ===
-        ws.write_formula(row, 2, f"='{run_name}'!C5")
-        ws.write_formula(row, 3, f"='{run_name}'!S4")
-        ws.write_formula(row, 4, f"='{run_name}'!AA4")
-        ws.write_formula(row, 5, f"='{run_name}'!AI4")
+        # === DV Detail (kolom 2–5) ===
+        ws.write_formula(row, 2, f"='{run_name}'!C5", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 3, f"='{run_name}'!S4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 4, f"='{run_name}'!AA4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 5, f"='{run_name}'!AI4", wb.add_format({'num_format': number_format}))
 
-        # === DV Detail (kolom 7–10) ===
-        ws.write_formula(row, 7, f"='{run_name}'!E5+'{run_name}'!M4")
-        ws.write_formula(row, 8, f"='{run_name}'!U4")
-        ws.write_formula(row, 9, f"='{run_name}'!AC4")
-        ws.write_formula(row, 10, f"='{run_name}'!AK4")
+        # === RAFM Detail (kolom 7–10) ===
+        ws.write_formula(row, 7, f"='{run_name}'!E5+'{run_name}'!M4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 8, f"='{run_name}'!U4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 9, f"='{run_name}'!AC4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 10, f"='{run_name}'!AK4", wb.add_format({'num_format': number_format}))
 
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')
 
     header_diff_tablerow = ['GOC', 'DV # of Policies', 'DV SA', 'RAFM # of Policies', 'RAFM SA', 'Diff # of Policies', 'Diff SA']
     tablecol_fmt = wb.add_format({'bold': True, 'underline': True, 'bg_color':'#92D050'})
+    summary_fmt = wb.add_format({'bold': True, 'bg_color': '#92D050'})
+    summary_number_fmt = wb.add_format({'num_format': number_format, 'bg_color': '#92D050', 'bold': True})
+    data_bold_fmt = wb.add_format({'bold': True, 'bg_color': '#92D050'})
+    data_number_fmt = wb.add_format({'num_format': number_format, 'bg_color': '#92D050'})
+    border_fmt = wb.add_format({'border': 1, 'num_format': number_format, 'bg_color': '#92D050'})
 
     for run_name in input_config.tradfilter:
         if run_name not in trad_results:
@@ -299,13 +306,14 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
             if idx == 1:
                 ws.write(3, col_starts[idx], 'Total BTPN', tablecol_fmt)
             elif idx == 2:
-                ws.write(3, col_starts[idx], 'Total Health non-YRT',tablecol_fmt)
+                ws.write(3, col_starts[idx], 'Total Health non-YRT', tablecol_fmt)
             elif idx == 3:
                 ws.write(3, col_starts[idx], 'Total Health YRT', tablecol_fmt)
             elif idx == 4:
                 ws.write(3, col_starts[idx], 'Total C', tablecol_fmt)
 
-            if summary is not None:
+            # Summary section (only summary rows are green and bold)
+            if summary is not None and not summary.empty:
                 for row in range(len(summary)):
                     for c, item in enumerate(summary.iloc[row]):
                         value = item if not (pd.isna(item) or item == '') else 0
@@ -313,14 +321,21 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
                             3 + row,
                             col_starts[idx] + 1 + c,
                             value,
-                            wb.add_format({'num_format': number_format, 'bg_color': '#92D050', 'bold': True})
+                            summary_number_fmt
                         )
 
-            if df is not None:
+            # Data section (data is NOT bold, only GOC column names are bold and green)
+            if df is not None and not df.empty:
                 for row in range(len(df)):
-                    for c, item in enumerate(df.iloc[row]):
+                    # First column (GOC) - bold and green
+                    goc_value = df.iloc[row, 0] if not pd.isna(df.iloc[row, 0]) else ''
+                    ws.write(6 + row, col_starts[idx], goc_value, data_bold_fmt)
+                    
+                    # Data columns - NOT bold, only green background
+                    for c in range(1, len(df.columns)):
+                        item = df.iloc[row, c]
                         value = item if not (pd.isna(item) or item == '') else 0
-                        ws.write(6 + row, col_starts[idx] + c, value, wb.add_format({'num_format': number_format,'bg_color': '#92D050', 'bold': True}))
+                        ws.write(6 + row, col_starts[idx] + c, value, data_number_fmt)
 
                 data_start_row = 6
                 data_end_row = 6 + len(df) - 1
@@ -331,10 +346,10 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
                         col_letter = xl_col_to_name(col_idx)
 
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        ws.write_formula(4, col_idx, sum_formula,wb.add_format({'num_format': number_format}))
+                        ws.write_formula(4, col_idx, sum_formula, summary_number_fmt)
 
                         diff_formula = f'={col_letter}4 - {col_letter}5'
-                        ws.write_formula(5, col_idx, diff_formula,wb.add_format({'num_format': number_format}))
+                        ws.write_formula(5, col_idx, diff_formula, summary_number_fmt)
 
                 else:
                     for col_offset in range(1, 7):
@@ -342,7 +357,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
                         col_letter = xl_col_to_name(col_idx)
 
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        ws.write_formula(3,col_idx, sum_formula,wb.add_format({'num_format': number_format}))
+                        ws.write_formula(3, col_idx, sum_formula, summary_number_fmt)
     wb.close()
 
 
@@ -400,7 +415,8 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         for c, item in enumerate(header_sum_tablerow2):
             ws.write(5, c + 1 + (4 * i), item, center_bold)
 
-    for i, run_name in enumerate(input_config.tradfilter):
+    # Fix: Use ulfilter instead of tradfilter for UL results
+    for i, run_name in enumerate(input_config.ulfilter):
         row = 6 + i
         if not run_name:
             continue
@@ -408,32 +424,36 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         ws.write(row, 0, run_name, yellow)
         
         # === DV (kolom 1) ===
-        ws.write_formula(row, 1, f'=SUM(C{row+1}:E{row+1})')
+        ws.write_formula(row, 1, f'=SUM(C{row+1}:E{row+1})', wb.add_format({'num_format': number_format}))
 
-        # === RAFM (kolom 6) ===
-        ws.write_formula(row, 5, f'=SUM(G{row+1}:I{row+1})')
+        # === RAFM (kolom 5) === Fixed column index
+        ws.write_formula(row, 5, f'=SUM(G{row+1}:I{row+1})', wb.add_format({'num_format': number_format}))
 
-        # === Differences (kolom 11–15) ===
-        ws.write_formula(row, 9, f'=B{row+1}-F{row+1}')
-        ws.write_formula(row, 10, f'=C{row+1}-G{row+1}')
-        ws.write_formula(row, 11, f'=D{row+1}-H{row+1}')
-        ws.write_formula(row, 12, f'=E{row+1}-I{row+1}')
+        # === Differences (kolom 9-12) === Fixed column indices
+        ws.write_formula(row, 9, f'=B{row+1}-F{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 10, f'=C{row+1}-G{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 11, f'=D{row+1}-H{row+1}', wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 12, f'=E{row+1}-I{row+1}', wb.add_format({'num_format': number_format}))
 
-        # === DV Detail (kolom 2–5) ===
-        ws.write_formula(row, 2, f"='{run_name}'!C5")
-        ws.write_formula(row, 3, f"='{run_name}'!S4")
-        ws.write_formula(row, 4, f"='{run_name}'!AA4")
+        # === DV Detail (kolom 2-4) ===
+        ws.write_formula(row, 2, f"='{run_name}'!C5", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 3, f"='{run_name}'!K4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 4, f"='{run_name}'!S4", wb.add_format({'num_format': number_format}))
 
-        # === RAFM Detail (kolom 7–10) ===
-        ws.write_formula(row, 6, f"='{run_name}'!E5+'{run_name}'!M4")
-        ws.write_formula(row, 7, f"='{run_name}'!U4")
-        ws.write_formula(row, 8, f"='{run_name}'!AC4")
+        # === RAFM Detail (kolom 6-8) ===
+        ws.write_formula(row, 6, f"='{run_name}'!E5+'{run_name}'!M4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 7, f"='{run_name}'!N4", wb.add_format({'num_format': number_format}))
+        ws.write_formula(row, 8, f"='{run_name}'!V4", wb.add_format({'num_format': number_format}))
 
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')
 
     header_diff_tablerow = ['GOC', 'DV # of Policies', 'DV Fund Value', 'RAFM # of Policies', 'RAFM Fund Value', 'Diff # of Policies', 'Diff Fund Value']
     tablecol_fmt = wb.add_format({'bold': True, 'underline': True, 'bg_color': '#92D050'})
+    summary_fmt = wb.add_format({'bold': True, 'bg_color': '#92D050'})
+    summary_number_fmt = wb.add_format({'num_format': number_format, 'bg_color': '#92D050', 'bold': True})
+    data_bold_fmt = wb.add_format({'bold': True, 'bg_color': '#92D050'})
+    data_number_fmt = wb.add_format({'num_format': number_format, 'bg_color': '#92D050'})
 
     for run_name in input_config.ulfilter:
         if run_name not in ul_results:
@@ -441,14 +461,13 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         ws = wb.add_worksheet(f'{run_name}')
         ul = ul_results[run_name]
         
-
         standard = convert_ul_result_to_standard(ul)
         df_list = standard['tables']
         sum_list = standard['summaries']
 
         print(f"Progress worksheet: {run_name}")
 
-        col_starts = [1, 9, 17]  # C, K, S
+        col_starts = [1, 9, 17]  # B, J, R
 
         for idx, (df, summary) in enumerate(zip(df_list, sum_list)):
             ws.set_column(col_starts[idx], col_starts[idx] + 6, 20)
@@ -465,7 +484,8 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
             elif idx == 2:
                 ws.write(3, col_starts[idx], 'Total Group Savings', tablecol_fmt)
 
-            if summary is not None:
+            # Summary section (only summary rows are green and bold)
+            if summary is not None and not summary.empty:
                 for row in range(len(summary)):
                     for c, item in enumerate(summary.iloc[row]):
                         value = item if not (pd.isna(item) or item == '') else 0
@@ -473,36 +493,43 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
                             3 + row,
                             col_starts[idx] + 1 + c,
                             value,
-                            wb.add_format({'num_format': number_format, 'bg_color': '#92D050', 'bold': True})
+                            summary_number_fmt
                         )
 
-            if df is not None:
+            # Data section (data is NOT bold, only GOC column names are bold and green)
+            if df is not None and not df.empty:
                 for row in range(len(df)):
-                    for c, item in enumerate(df.iloc[row]):
+                    # First column (GOC) - bold and green
+                    goc_value = df.iloc[row, 0] if not pd.isna(df.iloc[row, 0]) else ''
+                    ws.write(6 + row, col_starts[idx], goc_value, data_bold_fmt)
+                    
+                    # Data columns - NOT bold, only green background
+                    for c in range(1, len(df.columns)):
+                        item = df.iloc[row, c]
                         value = item if not (pd.isna(item) or item == '') else 0
-                        ws.write(6 + row, col_starts[idx] + c, value,wb.add_format({'num_format': number_format,'bg_color': '#92D050', 'bold': True}))
+                        ws.write(6 + row, col_starts[idx] + c, value, data_number_fmt)
 
                 data_start_row = 6
                 data_end_row = 6 + len(df) - 1
 
                 if idx == 0:  # Untuk C-H
-                    for col_offset in range(1,7):  
+                    for col_offset in range(1, 7):  
                         col_idx = col_starts[idx] + col_offset
                         col_letter = xl_col_to_name(col_idx)
 
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
                         diff_formula = f'={col_letter}4 - {col_letter}5'
 
-                        ws.write_formula(4, col_idx, sum_formula,wb.add_format({'num_format': number_format}))
-                        ws.write_formula(5, col_idx, diff_formula,wb.add_format({'num_format': number_format}))
+                        ws.write_formula(4, col_idx, sum_formula, summary_number_fmt)
+                        ws.write_formula(5, col_idx, diff_formula, summary_number_fmt)
 
                 else:  
-                    for col_offset in range(1,7):
+                    for col_offset in range(1, 7):
                         col_idx = col_starts[idx] + col_offset
                         col_letter = xl_col_to_name(col_idx)
 
                         sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        ws.write_formula(3, col_idx, sum_formula,wb.add_format({'num_format': number_format}))
+                        ws.write_formula(3, col_idx, sum_formula, summary_number_fmt)
     wb.close()
 
 def main(input_sheet_path):
@@ -548,7 +575,6 @@ def main(input_sheet_path):
     input_config.output_trad = output_trad_path
     input_config.output_ul = output_ul_path
 
-
     trad_results, ul_results = run_all_configurations(input_sheet_path)
 
     if not trad_results and not ul_results:
@@ -590,5 +616,3 @@ def main(input_sheet_path):
     print(f"\n⏱️ Total runtime: {formatted}")
 
     return True
-
-
