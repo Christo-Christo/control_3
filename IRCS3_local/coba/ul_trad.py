@@ -222,7 +222,6 @@ def load_excel_sheet_safely(file_path, sheet_name, required_columns=None, return
 
 def run_trad(params):
     """Main function for Traditional products processing with case-insensitive handling"""
-    max_workers = os.cpu_count()
     try:
         path_dv = params.get('path_dv', '')
         path_rafm = params.get('path_rafm', '')
@@ -231,19 +230,14 @@ def run_trad(params):
         if not path_rafm or not os.path.isfile(path_rafm):
             return {"error": f"File RAFM tidak ditemukan atau path kosong: {path_rafm}"}
 
-        # Load DV and RAFM data in parallel using ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_dv = executor.submit(pd.read_csv, path_dv)
-            future_rafm_idr = executor.submit(load_excel_sheet_safely, path_rafm, 'extraction_IDR', ['GOC', 'period', 'cov_units', 'pol_b'])
-            future_rafm_usd = executor.submit(load_excel_sheet_safely, path_rafm, 'extraction_USD', ['GOC', 'period', 'cov_units', 'pol_b'])
-
-            # Ambil hasil pembacaan
-            dv_trad = future_dv.result()
-            run_rafm_idr = future_rafm_idr.result()
-            run_rafm_usd = future_rafm_usd.result()
-
-        if dv_trad is None or dv_trad.empty:
-            return {"error": "File DV kosong atau tidak dapat dibaca"}
+        # Load DV data
+        try:
+            dv_trad = pd.read_csv(path_dv)
+        except:
+            try:
+                dv_trad = pd.read_excel(path_dv, engine='openpyxl')
+            except Exception as e:
+                return {"error": f"Gagal membaca file DV: {str(e)}"}
                 
         # Make columns case-insensitive for processing
         dv_trad_processed, dv_column_mapping = make_columns_case_insensitive(dv_trad)
@@ -353,6 +347,10 @@ def run_trad(params):
             usd_mask = dv_trad_total[goc_column].astype(str).str.contains("USD", case=False, na=False)
             dv_trad_total.loc[usd_mask, sum_assd_column] = dv_trad_total.loc[usd_mask, sum_assd_column] * usd_rate
 
+        # Load RAFM data with case-insensitive column handling
+        run_rafm_idr = load_excel_sheet_safely(path_rafm, 'extraction_IDR', ['GOC', 'period', 'cov_units', 'pol_b'])
+        run_rafm_usd = load_excel_sheet_safely(path_rafm, 'extraction_USD', ['GOC', 'period', 'cov_units', 'pol_b'])
+
         # Filter period = 0 and drop period column
         if not run_rafm_idr.empty:
             run_rafm_idr = run_rafm_idr[run_rafm_idr['period'].astype(str) == '0']
@@ -443,7 +441,7 @@ def run_trad(params):
         tabel_2 = filter_goc_by_code(merged, 'CC%')
 
         # TABEL 3: H_IDR_NO
-        tabel_3 = filter_goc_by_code(merged, 'r"H.*NO"')
+        tabel_3 = filter_goc_by_code(merged, 'H_IDR_NO')
         if not tabel_3.empty:
             tabel_3_processed = tabel_3.copy()
             tabel_3_processed[goc_column] = tabel_3_processed[goc_column].apply(
@@ -488,48 +486,26 @@ def run_trad(params):
 
 def run_ul(params):
     """Main function for Unit Linked products processing with case-insensitive handling"""
-    max_workers = os.cpu_count()
     try:
         path_dv = params.get('path_dv', '')
         path_rafm = params.get('path_rafm', '')
         path_uvsg = params.get('path_uvsg', '')  # Optional path
-
+        
         if not path_dv or not os.path.isfile(path_dv):
             return {"error": f"File DV tidak ditemukan atau path kosong: {path_dv}"}
         if not path_rafm or not os.path.isfile(path_rafm):
             return {"error": f"File RAFM tidak ditemukan atau path kosong: {path_rafm}"}
 
-        # Use ThreadPoolExecutor for parallel file reading
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_dv = executor.submit(pd.read_excel, path_dv, sheet_name=0, engine='openpyxl')
-            future_rafm_idr = executor.submit(load_excel_sheet_safely, path_rafm, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
-            future_rafm_usd = executor.submit(load_excel_sheet_safely, path_rafm, 'extraction_USD', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
-
-            future_uvsg_idr = None
-            future_uvsg_usd = None
-            if path_uvsg and os.path.isfile(path_uvsg):
-                future_uvsg_idr = executor.submit(load_excel_sheet_safely, path_uvsg, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'rv_av_if'])
-                future_uvsg_usd = executor.submit(load_excel_sheet_safely, path_uvsg, 'extraction_USD', ['GOC', 'period', 'pol_b', 'rv_av_if'])
-
-        # Get the results
+        # Load DV data
         try:
-            dv_ul = future_dv.result()
+            dv_ul = pd.read_excel(path_dv, sheet_name=0, engine='openpyxl')  # Use first sheet
         except Exception as e:
             return {"error": f"Gagal membaca file DV: {str(e)}"}
-
+        
         if dv_ul.empty:
             return {"error": "File DV kosong atau tidak dapat dibaca"} 
-
-        run_rafm_idr = future_rafm_idr.result()
-        run_rafm_usd = future_rafm_usd.result()
-
-        run_uvsg_idr = pd.DataFrame()
-        run_uvsg_usd = pd.DataFrame()
-        if path_uvsg and os.path.isfile(path_uvsg):
-            print(f"Loading UVSG file: {path_uvsg}")
-            run_uvsg_idr = future_uvsg_idr.result()
-            run_uvsg_usd = future_uvsg_usd.result()
-
+            
+        # Apply filters
         dv_ul_total = apply_filters(dv_ul, params)
         
         # Drop unnecessary columns (case-insensitive)
@@ -598,7 +574,11 @@ def run_ul(params):
             usd_mask = dv_ul_total[goc_column].astype(str).str.contains("USD", case=False, na=False)
             dv_ul_total.loc[usd_mask, total_fund_column] = dv_ul_total.loc[usd_mask, total_fund_column] * usd_rate
 
-        # RAFM processing
+        # Load RAFM data with case-insensitive column handling
+        run_rafm_idr = load_excel_sheet_safely(path_rafm, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
+        run_rafm_usd = load_excel_sheet_safely(path_rafm, 'extraction_USD', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
+        
+        # Filter period = 0
         if not run_rafm_idr.empty:
             run_rafm_idr = run_rafm_idr[run_rafm_idr['period'].astype(str) == '0']
             run_rafm_idr = run_rafm_idr.drop(columns=["period"])
@@ -607,40 +587,54 @@ def run_ul(params):
             run_rafm_usd = run_rafm_usd[run_rafm_usd['period'].astype(str) == '0']
             run_rafm_usd = run_rafm_usd.drop(columns=["period"])
 
+        # Combine RAFM data
         run_rafm_only = pd.concat([run_rafm_idr, run_rafm_usd], ignore_index=True)
         if not run_rafm_only.empty:
             run_rafm_only = clean_numeric_column(run_rafm_only, 'pol_b')
             run_rafm_only = clean_numeric_column(run_rafm_only, 'rv_av_if')
+            
+            # Find and standardize GOC column in RAFM
             goc_col_rafm = None
             for col in run_rafm_only.columns:
                 if col.lower() == 'goc':
                     goc_col_rafm = col
                     break
+            
             if goc_col_rafm and goc_col_rafm != goc_column:
                 run_rafm_only = run_rafm_only.rename(columns={goc_col_rafm: goc_column})
 
+        # Exclude GS from RAFM for main processing
         run_rafm_no_gs = run_rafm_only[~run_rafm_only[goc_column].astype(str).str.contains('GS', case=False, na=False)] if not run_rafm_only.empty else pd.DataFrame()
 
+        # Load UVSG data if provided (OPTIONAL)
         run_uvsg = pd.DataFrame()
-        if not run_uvsg_idr.empty:
-            run_uvsg_idr = run_uvsg_idr[run_uvsg_idr['period'].astype(str) == '0']
-            run_uvsg_idr = run_uvsg_idr.drop(columns=["period"])
-        
-        if not run_uvsg_usd.empty:
-            run_uvsg_usd = run_uvsg_usd[run_uvsg_usd['period'].astype(str) == '0']
-            run_uvsg_usd = run_uvsg_usd.drop(columns=["period"])
+        if path_uvsg and os.path.isfile(path_uvsg):
+            print(f"Loading UVSG file: {path_uvsg}")
+            run_uvsg_idr = load_excel_sheet_safely(path_uvsg, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'rv_av_if'])
+            run_uvsg_usd = load_excel_sheet_safely(path_uvsg, 'extraction_USD', ['GOC', 'period', 'pol_b', 'rv_av_if'])
+            
+            if not run_uvsg_idr.empty:
+                run_uvsg_idr = run_uvsg_idr[run_uvsg_idr['period'].astype(str) == '0']
+                run_uvsg_idr = run_uvsg_idr.drop(columns=["period"])
+            
+            if not run_uvsg_usd.empty:
+                run_uvsg_usd = run_uvsg_usd[run_uvsg_usd['period'].astype(str) == '0']
+                run_uvsg_usd = run_uvsg_usd.drop(columns=["period"])
 
-        run_uvsg = pd.concat([run_uvsg_idr, run_uvsg_usd], ignore_index=True)
-        if not run_uvsg.empty:
-            run_uvsg = clean_numeric_column(run_uvsg, 'pol_b')
-            run_uvsg = clean_numeric_column(run_uvsg, 'rv_av_if')
-            goc_col_uvsg = None
-            for col in run_uvsg.columns:
-                if col.lower() == 'goc':
-                    goc_col_uvsg = col
-                    break
-            if goc_col_uvsg and goc_col_uvsg != goc_column:
-                run_uvsg = run_uvsg.rename(columns={goc_col_uvsg: goc_column})
+            run_uvsg = pd.concat([run_uvsg_idr, run_uvsg_usd], ignore_index=True)
+            if not run_uvsg.empty:
+                run_uvsg = clean_numeric_column(run_uvsg, 'pol_b')
+                run_uvsg = clean_numeric_column(run_uvsg, 'rv_av_if')
+                
+                # Find and standardize GOC column in UVSG
+                goc_col_uvsg = None
+                for col in run_uvsg.columns:
+                    if col.lower() == 'goc':
+                        goc_col_uvsg = col
+                        break
+                
+                if goc_col_uvsg and goc_col_uvsg != goc_column:
+                    run_uvsg = run_uvsg.rename(columns={goc_col_uvsg: goc_column})
         else:
             print("UVSG file not provided or not found - skipping UVSG processing")
 
@@ -714,7 +708,7 @@ def run_ul(params):
         })
 
         # TABEL 2: AG (Tasbih) - FIXED: Clean column structure
-        tabel_2 = filter_goc_by_code(merged, 'r"AG.*SH"')
+        tabel_2 = filter_goc_by_code(merged, 'SH')
         if not tabel_2.empty:
             tabel_2 = tabel_2[essential_columns]
 

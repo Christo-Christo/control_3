@@ -143,7 +143,7 @@ def run_all_configurations(excel_path):
     trad_results = {}
     ul_results = {}
 
-    max_workers = os.cpu_count()
+    max_workers = max(8, (os.cpu_count() or 1) * 4)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_type = {}
 
