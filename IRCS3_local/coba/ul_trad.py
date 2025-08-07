@@ -334,7 +334,6 @@ def run_trad(params):
             print("❌ Parameter 'usdidr' tidak ditemukan dalam input")
         else:
             usd_rate = (params_lower['usdidr'])
-            print(f"✅ FX rate USDIDR yang digunakan: {usd_rate}")
         
         # Find sum_assd column
         sum_assd_column = None
@@ -561,8 +560,7 @@ def run_ul(params):
             print("❌ Parameter 'usdidr' tidak ditemukan dalam input")
         else:
             usd_rate = (params_lower['usdidr'])
-            print(f"✅ FX rate USDIDR yang digunakan: {usd_rate}")
-        
+                    
         # Find total_fund column
         total_fund_column = None
         for col in dv_ul_total.columns:
@@ -707,13 +705,8 @@ def run_ul(params):
             ]
         })
 
-        # TABEL 2: AG (Tasbih) - FIXED: Clean column structure
-        tabel_2 = filter_goc_by_code(merged, 'SH')
-        if not tabel_2.empty:
-            tabel_2 = tabel_2[essential_columns]
-
-        # TABEL 3: GS (Group Savings) - FIXED: Clean column structure
-        tabel_3 = pd.DataFrame()
+        # TABEL 2: GS (Group Savings) - FIXED: Clean column structure
+        tabel_2 = pd.DataFrame()
         
         # Get GS data from original RAFM (before excluding GS) and DV
         dv_gs = filter_goc_by_code(dv_ul_total, 'GS')
@@ -721,35 +714,34 @@ def run_ul(params):
 
         if not dv_gs.empty or not rafm_gs.empty:
             # Merge GS data properly
-            tabel_3 = pd.merge(dv_gs, rafm_gs, on=goc_column, how="outer", suffixes=("", "_rafm"))
-            tabel_3.fillna(0, inplace=True)
+            tabel_2 = pd.merge(dv_gs, rafm_gs, on=goc_column, how="outer", suffixes=("", "_rafm"))
+            tabel_2.fillna(0, inplace=True)
 
             # Fix column selection to avoid suffix issues
-            pol_num_gs = safe_get_col(tabel_3, 'pol_num')
-            total_fund_gs = safe_get_col(tabel_3, 'total_fund')
-            pol_b_gs = safe_get_col(tabel_3, 'pol_b')
-            rv_av_if_gs = safe_get_col(tabel_3, 'rv_av_if')
+            pol_num_gs = safe_get_col(tabel_2, 'pol_num')
+            total_fund_gs = safe_get_col(tabel_2, 'total_fund')
+            pol_b_gs = safe_get_col(tabel_2, 'pol_b')
+            rv_av_if_gs = safe_get_col(tabel_2, 'rv_av_if')
 
             if pol_num_gs and pol_b_gs:
-                tabel_3['diff_policies'] = tabel_3[pol_num_gs] - tabel_3[pol_b_gs]
+                tabel_2['diff_policies'] = tabel_2[pol_num_gs] - tabel_2[pol_b_gs]
             else:
-                tabel_3['diff_policies'] = 0
+                tabel_2['diff_policies'] = 0
                 
             if total_fund_gs and rv_av_if_gs:
-                tabel_3['diff_fund_value'] = tabel_3[total_fund_gs] - tabel_3[rv_av_if_gs]
+                tabel_2['diff_fund_value'] = tabel_2[total_fund_gs] - tabel_2[rv_av_if_gs]
             else:
-                tabel_3['diff_fund_value'] = 0
+                tabel_2['diff_fund_value'] = 0
 
             # FIXED: Clean column structure for tabel_3
-            tabel_3_essential = [goc_column, pol_num_gs, total_fund_gs, pol_b_gs, rv_av_if_gs, 'diff_policies', 'diff_fund_value']
-            tabel_3_essential = [col for col in tabel_3_essential if col is not None and col in tabel_3.columns]
-            tabel_3 = tabel_3[tabel_3_essential]
+            tabel_2_essential = [goc_column, pol_num_gs, total_fund_gs, pol_b_gs, rv_av_if_gs, 'diff_policies', 'diff_fund_value']
+            tabel_2_essential = [col for col in tabel_2_essential if col is not None and col in tabel_2.columns]
+            tabel_2 = tabel_2[tabel_2_essential]
 
         return {
             'product_type': 'UL',
             'tabel_total': tabel_total_l,
             'tabel_2': tabel_2,
-            'tabel_3': tabel_3,
             'summary_total': summary,
             'run_name': params.get('run_name', params.get('run', ''))
         }

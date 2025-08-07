@@ -267,7 +267,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
         ws.write_formula(row, 5, f"='{run_name}'!AI4", border_number)
 
         # === RAFM Detail (kolom 7–10) ===
-        ws.write_formula(row, 7, f"='{run_name}'!E5", border_number)
+        ws.write_formula(row, 7, f"='{run_name}'!E5 + '{run_name}'!M4", border_number)
         ws.write_formula(row, 8, f"='{run_name}'!U4", border_number)
         ws.write_formula(row, 9, f"='{run_name}'!AC4", border_number)
         ws.write_formula(row, 10, f"='{run_name}'!AK4", border_number)
@@ -294,7 +294,6 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
         standard = convert_trad_result_to_standard(tr)
         df_list = standard['tables']
         sum_list = standard['summaries']
-        print(f"Progress worksheet: {run_name}")
         col_starts = [1, 9, 17, 25, 33]  # B, J, R, Z, AH
 
         for idx, (df, summary) in enumerate(zip(df_list, sum_list)):
@@ -383,7 +382,7 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
     wb = xlsxwriter.Workbook(input_config.output_ul, {'nan_inf_to_errors': True})
     number_format = '_(* #,##0_);_(* (#,##0)_);_(* "-"_);_(@_)'
     header_sum_tablerow = ['DV', 'RAFM', 'Differences']
-    header_sum_tablerow2 = ['Total', 'UL & SH & PI', 'Tasbih', 'GS']
+    header_sum_tablerow2 = ['Total', 'UL & SH & PI', 'GS']
 
     ws = wb.add_worksheet('Control and Summary')
     ws.freeze_panes(0, 1)
@@ -413,132 +412,128 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         ws.write(6 + i, 0, run_name, border_yellow)
 
     for c, item in enumerate(header_sum_tablerow):
-        ws.merge_range(4, 1 + (4 * c), 4, 4 + (4 * c), item, center_merge)
-
+        ws.merge_range(4, 1 + (3 * c), 4, 3 + (3 * c), item, center_merge)
     ws.merge_range(4, 13, 5, 13, 'Notes', center_merge)
 
     for i in range(len(header_sum_tablerow)):
         for c, item in enumerate(header_sum_tablerow2):
-            ws.write(5, c + 1 + (4 * i), item, center_bold)
+            ws.write(5, c + 1 + (3 * i), item, center_bold)
 
-    # Fix: Use ulfilter instead of tradfilter for UL results
     for i, run_name in enumerate(input_config.ulfilter):
         row = 6 + i
         if not run_name:
             continue
-        
+
         ws.write(row, 0, run_name, yellow)
-        
-        # === DV (kolom 1) ===
-        ws.write_formula(row, 1, f'=SUM(C{row+1}:E{row+1})', border_number)
 
-        # === RAFM (kolom 5) === Fixed column index
-        ws.write_formula(row, 5, f'=SUM(G{row+1}:I{row+1})', border_number)
-
-        # === Differences (kolom 9-12) === Fixed column indices
-        ws.write_formula(row, 9, f'=B{row+1}-F{row+1}', border_number)
-        ws.write_formula(row, 10, f'=C{row+1}-G{row+1}', border_number)
-        ws.write_formula(row, 11, f'=D{row+1}-H{row+1}', border_number)
-        ws.write_formula(row, 12, f'=E{row+1}-I{row+1}', border_number)
-
-        # === DV Detail (kolom 2-4) ===
+        ws.write_formula(row, 1, f'=SUM(C{row+1}:D{row+1})', border_number)
+        ws.write_formula(row, 4, f'=SUM(F{row+1}:G{row+1})', border_number)
+        ws.write_formula(row, 7, f'=B{row+1}-E{row+1}', border_number)
+        ws.write_formula(row, 8, f'=C{row+1}-F{row+1}', border_number)
+        ws.write_formula(row, 9, f'=D{row+1}-G{row+1}', border_number)
         ws.write_formula(row, 2, f"='{run_name}'!C5", border_number)
         ws.write_formula(row, 3, f"='{run_name}'!K4", border_number)
-        ws.write_formula(row, 4, f"='{run_name}'!S4", border_number)
-
-        # === RAFM Detail (kolom 6-8) ===
-        ws.write_formula(row, 6, f"='{run_name}'!E5", border_number)
-        ws.write_formula(row, 7, f"='{run_name}'!M4", border_number)
-        ws.write_formula(row, 8, f"='{run_name}'!U4", border_number)
+        ws.write_formula(row, 5, f"='{run_name}'!E5", border_number)
+        ws.write_formula(row, 6, f"='{run_name}'!M4", border_number)
 
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')
 
     header_diff_tablerow = ['GOC', 'DV # of Policies', 'DV Fund Value', 'RAFM # of Policies', 'RAFM Fund Value', 'Diff # of Policies', 'Diff Fund Value']
     tablecol_fmt = wb.add_format({'bold': True, 'underline': True, 'bg_color': '#92D050'})
-    
-    # Summary formats (green background)
     summary_number_fmt = wb.add_format({'num_format': number_format, 'bg_color': '#92D050', 'bold': True})
-    
-    # Data formats (no green background, with border)
-    data_bold_fmt = wb.add_format({'bold': True})  # GOC column - bold with border
-    data_number_fmt = wb.add_format({'num_format': number_format})  # Data columns - border only
+    data_bold_fmt = wb.add_format({'bold': True})
+    data_number_fmt = wb.add_format({'num_format': number_format})
 
     for run_name in input_config.ulfilter:
         if run_name not in ul_results:
             continue
-        ws = wb.add_worksheet(f'{run_name}')
-        ul = ul_results[run_name]
-        
-        standard = convert_ul_result_to_standard(ul)
-        df_list = standard['tables']
-        sum_list = standard['summaries']
 
-        print(f"Progress worksheet: {run_name}")
+        try:
+            ws = wb.add_worksheet(f'{run_name}')
+            ul = ul_results[run_name]
+            standard = convert_ul_result_to_standard(ul)
 
-        col_starts = [1, 9, 17]  # B, J, R
+            df_list = standard.get('tables', [])
+            sum_list = standard.get('summaries', [])
 
-        for idx, (df, summary) in enumerate(zip(df_list, sum_list)):
-            ws.set_column(col_starts[idx], col_starts[idx] + 6, 20)
-            ws.set_column(col_starts[idx], col_starts[idx], 40)
+            if not isinstance(df_list, list) or not isinstance(sum_list, list):
+                print(f"[{run_name}] ❌ tables/summaries not list")
+                continue
 
-            for c, item in enumerate(header_diff_tablerow):
-                ws.write(2, col_starts[idx] + c, item, wb.add_format({'bold': True, 'underline': True}))
+            if len(df_list) != len(sum_list):
+                print(f"[{run_name}] ⚠️ len df_list ({len(df_list)}) ≠ sum_list ({len(sum_list)})")
 
-            for r, item in enumerate(['Total All from DV', 'Grand Total Summary', 'Check']):
-                ws.write(3 + r, col_starts[idx], item, tablecol_fmt)
+            max_len = len(df_list)
+            col_starts = [1 + 8 * i for i in range(max_len)]
 
-            if idx == 1:
-                ws.write(3, col_starts[idx], 'Total Tasbih', tablecol_fmt)
-            elif idx == 2:
-                ws.write(3, col_starts[idx], 'Total Group Savings', tablecol_fmt)
+            for idx in range(max_len):
+                df = df_list[idx] if idx < len(df_list) else None
+                summary = sum_list[idx] if idx < len(sum_list) else None
 
-            # Summary section (GREEN background for all summaries)
-            if summary is not None and not summary.empty:
-                for row in range(len(summary)):
-                    for c, item in enumerate(summary.iloc[row]):
-                        value = item if not (pd.isna(item) or item == '') else 0
-                        ws.write(
-                            3 + row,
-                            col_starts[idx] + 1 + c,
-                            value,
-                            summary_number_fmt  # Green background for all summaries
-                        )
+                print(f"[{run_name}] 📊 Menulis blok ke-{idx + 1} | df exist: {df is not None and not df.empty}, summary exist: {summary is not None and not summary.empty}")
 
-            # Data section (NO green background, only borders)
-            if df is not None and not df.empty:
-                for row in range(len(df)):
-                    # First column (GOC) - bold with border
-                    goc_value = df.iloc[row, 0] if not pd.isna(df.iloc[row, 0]) else ''
-                    ws.write(6 + row, col_starts[idx], goc_value, data_bold_fmt)
-                    
-                    # Data columns - border only
-                    for c in range(1, len(df.columns)):
-                        item = df.iloc[row, c]
-                        value = item if not (pd.isna(item) or item == '') else 0
-                        ws.write(6 + row, col_starts[idx] + c, value, data_number_fmt)
+                if (df is None or df.empty) and (summary is None or summary.empty):
+                    continue
+                ws.set_column(col_starts[idx], col_starts[idx] + 6, 20)
+                ws.set_column(col_starts[idx], col_starts[idx], 40)
 
-                data_start_row = 6
-                data_end_row = 6 + len(df) - 1
+                for c, item in enumerate(header_diff_tablerow):
+                    ws.write(2, col_starts[idx] + c, item, tablecol_fmt)
 
-                if idx == 0:  # Untuk C-H
-                    for col_offset in range(1, 7):  
-                        col_idx = col_starts[idx] + col_offset
-                        col_letter = xl_col_to_name(col_idx)
+                row_titles = ['Total All from DV', 'Grand Total Summary', 'Check']
+                if idx == 1:
+                    row_titles[0] = 'Total Group Savings'
 
-                        sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        diff_formula = f'={col_letter}4 - {col_letter}5'
+                for r, title in enumerate(row_titles):
+                    ws.write(3 + r, col_starts[idx], title, tablecol_fmt)
 
-                        ws.write_formula(4, col_idx, sum_formula, summary_number_fmt)
-                        ws.write_formula(5, col_idx, diff_formula, summary_number_fmt)
+                if summary is not None and not summary.empty:
+                    for row in range(len(summary)):
+                        for c, item in enumerate(summary.iloc[row]):
+                            value = item if not (pd.isna(item) or item == '') else 0
+                            ws.write(3 + row, col_starts[idx] + 1 + c, value, summary_number_fmt)
 
-                else:  
-                    for col_offset in range(1, 7):
-                        col_idx = col_starts[idx] + col_offset
-                        col_letter = xl_col_to_name(col_idx)
+                if df is not None and not df.empty:
+                    for row in range(len(df)):
+                        goc_value = df.iloc[row, 0] if not pd.isna(df.iloc[row, 0]) else ''
+                        ws.write(6 + row, col_starts[idx], goc_value, data_bold_fmt)
 
-                        sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
-                        ws.write_formula(3, col_idx, sum_formula, summary_number_fmt)
+                        for c in range(1, len(df.columns)):
+                            try:
+                                item = df.iloc[row, c]
+                                value = item if not (pd.isna(item) or item == '') else 0
+                                ws.write(6 + row, col_starts[idx] + c, value, data_number_fmt)
+                            except IndexError:
+                                print(f"[{run_name}] ❌ IndexError di df[{row},{c}]")
+                                continue
+
+                    data_start_row = 6
+                    data_end_row = 6 + len(df) - 1
+
+                    if idx == 0:  # Kolom C-H
+                        for col_offset in range(1, 7):  
+                            col_idx = col_starts[idx] + col_offset
+                            col_letter = xl_col_to_name(col_idx)
+
+                            sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
+                            diff_formula = f'={col_letter}4 - {col_letter}5'
+
+                            ws.write_formula(4, col_idx, sum_formula, summary_number_fmt)  
+                            ws.write_formula(5, col_idx, diff_formula, summary_number_fmt) 
+
+                    elif idx == 1: 
+                        for col_offset in range(1, 7):  
+                            col_idx = col_starts[idx] + col_offset 
+                            col_letter = xl_col_to_name(col_idx)
+
+                            sum_formula = f'=SUM({col_letter}{data_start_row + 1}:{col_letter}{data_end_row + 1})'
+                            ws.write_formula(3, col_idx, sum_formula, summary_number_fmt)  
+
+        except Exception as e:
+            print(f"[{run_name}] ❌ Error menulis worksheet: {e}")
+            continue
+
     wb.close()
 
 def main(input_sheet_path):

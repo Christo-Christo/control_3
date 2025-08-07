@@ -113,10 +113,10 @@ def process_input_file(file_path):
                             row_d = f"$D{row_idx+1}"
 
                             formula = (
-                                f"=INDEX('{cf_sheet}'!$C$2:${max_col_cf}$2, MATCH({row_b}, '{cf_sheet}'!$B$2:$B${max_row_cf}, 0), MATCH({col_header}, '{cf_sheet}'!$C$1:${max_col_cf}$1, 0))"
-                                f"-INDEX('{rafm_sheet_1}'!$C$2:${max_col_rafm1}$2, MATCH({row_c}, '{rafm_sheet_1}'!$B$2:$B${max_row_rafm1}, 0), MATCH({col_header}, '{rafm_sheet_1}'!$C$1:${max_col_rafm1}$1, 0))"
-                                f"+INDEX('{manual_sheet}'!$C$2:${max_col_manual}$2, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0))"
-                                f"-INDEX('{rafm_sheet_2}'!$C$2:${max_col_rafm2}$2, MATCH({row_d}, '{rafm_sheet_2}'!$B$2:$B${max_row_rafm2}, 0), MATCH({col_header}, '{rafm_sheet_2}'!$C$1:${max_col_rafm2}$1, 0))"
+                                f"=INDEX('{cf_sheet}'!$C$2:${max_col_cf}${max_row_cf}, MATCH({row_b}, '{cf_sheet}'!$B$2:$B${max_row_cf}, 0), MATCH({col_header}, '{cf_sheet}'!$C$1:${max_col_cf}$1, 0))"
+                                f"-INDEX('{rafm_sheet_1}'!$C$2:${max_col_rafm1}${max_row_rafm1}, MATCH({row_c}, '{rafm_sheet_1}'!$B$2:$B${max_row_rafm1}, 0), MATCH({col_header}, '{rafm_sheet_1}'!$C$1:${max_col_rafm1}$1, 0))"
+                                f"+INDEX('{manual_sheet}'!$C$2:${max_col_manual}${max_row_manual}, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0))"
+                                f"-INDEX('{rafm_sheet_2}'!$C$2:${max_col_rafm2}${max_row_rafm2}, MATCH({row_d}, '{rafm_sheet_2}'!$B$2:$B${max_row_rafm2}, 0), MATCH({col_header}, '{rafm_sheet_2}'!$C$1:${max_col_rafm2}$1, 0))"
                             )
                             worksheet.write_formula(row_idx, col_idx, formula)
 
@@ -145,9 +145,9 @@ def process_input_file(file_path):
                             row_c = f"$C{row_idx+1}"
 
                             formula = (
-                                f"=INDEX('{cf_sheet}'!$C$2:${max_col_cf}$2, MATCH({row_b}, '{cf_sheet}'!$B$2:$B${max_row_cf}, 0), MATCH({col_header}, '{cf_sheet}'!$C$1:${max_col_cf}$1, 0))"
-                                f"-INDEX('{rafm_sheet}'!$C$2:${max_col_rafm}$2, MATCH({row_c}, '{rafm_sheet}'!$B$2:$B${max_row_rafm}, 0), MATCH({col_header}, '{rafm_sheet}'!$C$1:${max_col_rafm}$1, 0))"
-                                f"-INDEX('{manual_sheet}'!$C$2:${max_col_manual}$2, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0))"
+                                f"=INDEX('{cf_sheet}'!$C$2:${max_col_cf}${max_row_cf}, MATCH({row_b}, '{cf_sheet}'!$B$2:$B${max_row_cf}, 0), MATCH({col_header}, '{cf_sheet}'!$C$1:${max_col_cf}$1, 0))"
+                                f"-INDEX('{rafm_sheet}'!$C$2:${max_col_rafm}${max_row_rafm}, MATCH({row_c}, '{rafm_sheet}'!$B$2:$B${max_row_rafm}, 0), MATCH({col_header}, '{rafm_sheet}'!$C$1:${max_col_rafm}$1, 0))"
+                                f"-INDEX('{manual_sheet}'!$C$2:${max_col_manual}${max_row_manual}, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0))"
                             )
                             worksheet.write_formula(row_idx, col_idx, formula)
 
@@ -176,9 +176,9 @@ def process_input_file(file_path):
                             row_c = f"$C{row_idx+1}"
 
                             formula = (
-                                f"=INDEX('{cf_sheet}'!$C$2:${max_col_cf}$2, MATCH({row_b}, '{cf_sheet}'!$B$2:$B${max_row_cf}, 0), MATCH({col_header}, '{cf_sheet}'!$C$1:${max_col_cf}$1, 0))"
-                                f"-INDEX('{rafm_sheet}'!$C$2:${max_col_rafm}$2, MATCH({row_c}, '{rafm_sheet}'!$B$2:$B${max_row_rafm}, 0), MATCH({col_header}, '{rafm_sheet}'!$C$1:${max_col_rafm}$1, 0))"
-                                f"-INDEX('{manual_sheet}'!$C$2:${max_col_manual}$2, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0))"
+                                f"=INDEX('{cf_sheet}'!$C$2:${max_col_cf}${max_row_cf}, MATCH({row_b}, '{cf_sheet}'!$B$2:$B${max_row_cf}, 0), MATCH({col_header}, '{cf_sheet}'!$C$1:${max_col_cf}$1, 0))"
+                                f"-INDEX('{rafm_sheet}'!$C$2:${max_col_rafm}${max_row_rafm}, MATCH({row_c}, '{rafm_sheet}'!$B$2:$B${max_row_rafm}, 0), MATCH({col_header}, '{rafm_sheet}'!$C$1:${max_col_rafm}$1, 0))"
+                                f"-INDEX('{manual_sheet}'!$C$2:${max_col_manual}${max_row_manual}, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0))"
                             )
                             worksheet.write_formula(row_idx, col_idx, formula)
 
