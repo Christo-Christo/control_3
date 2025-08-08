@@ -69,8 +69,19 @@ def process_input_file(file_path):
             workbook = writer.book
             worksheet = writer.sheets[sheet_name]
 
+            format_accounting = workbook.add_format({'num_format': '_-* #,##0_-;-* #,##0_-;_-* "-"_-;_-@_-'})
             format_int = workbook.add_format({'num_format': '0'})
-            worksheet.set_column(0, df_sheet.shape[1] - 1, None, format_int)
+
+            if hasattr(df_sheet, 'columns'):
+                for col_idx, col_name in enumerate(df_sheet.columns):
+                    col_name_lower = str(col_name).lower()
+                    if 'include year' in col_name_lower or 'exclude year' in col_name_lower:
+                        worksheet.set_column(col_idx, col_idx, None, format_int)
+                    else:
+                        worksheet.set_column(col_idx, col_idx, None, format_accounting)
+            else:
+                # Fallback jika tidak ada column names
+                worksheet.set_column(0, df_sheet.shape[1] - 1, None, format_accounting)
 
             if sheet_name != 'Control':
                 border_format = workbook.add_format({'border': 1, 'border_color': 'black'})
@@ -82,6 +93,7 @@ def process_input_file(file_path):
 
             if sheet_name.lower().startswith("checking summary"):
                 nrows, ncols = df_sheet.shape
+                print(f"Debug: Processing {sheet_name}, nrows={nrows}, ncols={ncols}")
 
                 if jenis == 'trad':
                     cf_sheet = 'CF ARGO AZTRAD'
@@ -104,6 +116,7 @@ def process_input_file(file_path):
                     max_row_rafm2 = rafm2_df.shape[0] + 1
                     max_row_manual = manual_df.shape[0] + 1
 
+                    print(f"Debug TRAD: Processing rows 1 to {nrows-1}, columns 4 to {ncols-1}")
                     for row_idx in range(1, nrows):
                         for col_idx in range(4, ncols):
                             col_letter = xl_col_to_name(col_idx)
@@ -137,6 +150,7 @@ def process_input_file(file_path):
                     max_row_rafm = rafm_df.shape[0] + 1
                     max_row_manual = manual_df.shape[0] + 1
 
+                    print(f"Debug UL: Processing rows 1 to {nrows-1}, columns 3 to {ncols-1}")
                     for row_idx in range(1, nrows):
                         for col_idx in range(3, ncols): 
                             col_letter = xl_col_to_name(col_idx)
@@ -174,6 +188,7 @@ def process_input_file(file_path):
                     max_row_rafm = rafm_df.shape[0] + 1
                     max_row_manual = manual_df.shape[0] + 1
 
+                    print(f"Debug REAS: Processing rows 1 to {nrows-1}, columns 3 to {ncols-1}")
                     for row_idx in range(1, nrows):
                         for col_idx in range(3, ncols): 
                             col_letter = xl_col_to_name(col_idx)
