@@ -272,7 +272,16 @@ def main(params):
     cf_argo = cf_argo[cols]
     cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name'})
     cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
-    cf_argo = cf_argo.drop(columns = ['RAFM File Name','UVSG File Name'])
+    
+    # Fixed: Safely drop columns that exist
+    columns_to_drop = []
+    if 'RAFM File Name' in cf_argo.columns:
+        columns_to_drop.append('RAFM File Name')
+    if 'UVSG File Name' in cf_argo.columns:
+        columns_to_drop.append('UVSG File Name')
+    if columns_to_drop:
+        cf_argo = cf_argo.drop(columns=columns_to_drop)
+    
     file_paths_rafm = [f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx')) if not os.path.basename(f).startswith('~$')]
     file_entries = [
     (f, os.path.splitext(os.path.basename(f))[0], global_filter_rafm)
@@ -335,7 +344,10 @@ def main(params):
     cols = ['File_Name'] + [col for col in cf_rafm_1.columns if col != 'File_Name']
     cf_rafm_1 = cf_rafm_1[cols]
 
-    code_rafm = code.drop(columns={'UVSG File Name'})
+    code_rafm = code.copy()
+    if 'UVSG File Name' in code_rafm.columns:
+        code_rafm = code_rafm.drop(columns=['UVSG File Name'])
+    
     cf_rafm = cf_rafm_1.rename(columns={'File_Name': 'RAFM File Name'})
     cf_rafm_merge = pd.merge(code_rafm, cf_rafm, on="RAFM File Name", how="left")
     cf_rafm_merge.fillna(0, inplace=True)
@@ -357,15 +369,23 @@ def main(params):
             for col in numeric_cols:
                 cf_rafm_merge.at[idx, col] = total_values[col]
 
-    cf_rafm = cf_rafm_merge.drop(columns=['ARGO File Name'])
-    cf_rafm = cf_rafm.drop(columns={'period'})
+    columns_to_drop = []
+    if 'ARGO File Name' in cf_rafm_merge.columns:
+        columns_to_drop.append('ARGO File Name')
+    if 'period' in cf_rafm_merge.columns:
+        columns_to_drop.append('period')
+    if columns_to_drop:
+        cf_rafm = cf_rafm_merge.drop(columns=columns_to_drop)
+    else:
+        cf_rafm = cf_rafm_merge.copy()
+    
     cf_rafm['dac_cov_units'] = cf_rafm['cov_units']
     cf_rafm['dac'] = -cf_rafm['r_acq_cost']
     nattr_exp = ['nattr_exp_acq', 'nattr_exp_inv', 'nattr_exp_maint']
     for col in nattr_exp:
         cf_rafm[col] = cf_rafm[col].astype(str).str.replace(',', '').astype(float)
     cf_rafm['nattr_exp'] = cf_rafm['nattr_exp_acq'] + cf_rafm['nattr_exp_inv'] + cf_rafm['nattr_exp_maint']
-    file_paths_uvsg = [f for f in glob.glob(os.path.join(folder_path_uvsg, '*.xlsx')) if not os.path.basename(f).startswith('~$')]
+    file_paths_uvsg = [f for f in glob.glob(os.path.join(folder_path_uvsg, '*.xlsx')) if not os.path.basename(f).startswith('~')]
 
     summary_rows_uvsg = []
     additional_summary_rows = []
@@ -409,7 +429,9 @@ def main(params):
         uvsg_1 = pd.DataFrame(columns=['File_Name'] + columns_to_sum_uvsg + additional_columns_uvsg)
 
     uvsg_1 = uvsg_1.rename(columns={'u_sar': 'c_sar'})
-    uvsg_1 = uvsg_1.drop(columns={'period'}, errors='ignore')
+    if 'period' in uvsg_1.columns:
+        uvsg_1 = uvsg_1.drop(columns=['period'])
+    
     uvsg_1['dac_cov_units'] = uvsg_1['cov_units']
     uvsg_1['dac'] = -uvsg_1['r_acq_cost']
     for col in nattr_exp:
@@ -417,11 +439,18 @@ def main(params):
     uvsg_1['nattr_exp'] = uvsg_1['nattr_exp_acq'] + uvsg_1['nattr_exp_inv'] + uvsg_1['nattr_exp_maint']
 
     uvsg_2 = uvsg_1.copy()
-    code_uvsg = code.drop(columns={'ARGO File Name'})
+    code_uvsg = code.copy()
+    if 'ARGO File Name' in code_uvsg.columns:
+        code_uvsg = code_uvsg.drop(columns=['ARGO File Name'])
+    
     uvsg = uvsg_2.rename(columns={'File_Name': 'UVSG File Name'})
     uvsg_merged = pd.merge(code_uvsg, uvsg, on="UVSG File Name", how="left")
     uvsg_merged.fillna(0, inplace=True)
-    uvsg = uvsg_merged.drop(columns=['RAFM File Name'])
+    if 'RAFM File Name' in uvsg_merged.columns:
+        uvsg = uvsg_merged.drop(columns=['RAFM File Name'])
+    else:
+        uvsg = uvsg_merged.copy()
+    
     #################################### RAFM MANUAL #####################################
     rafm_manual = pd.read_excel(rafm_manual_path, sheet_name = 'Sheet1',engine = 'openpyxl')
     rafm_manual = rafm_manual.drop (columns = ['No','Update (Y/N)','Shift Dur','Cohort','C_sar'])

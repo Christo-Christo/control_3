@@ -157,7 +157,15 @@ def main(params):
     cf_argo = pd.DataFrame(summary_rows_argo)
     cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name'})
     cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
-    cf_argo = cf_argo.drop(columns = ['RAFM File Name','UVSG File Name'])
+    
+    columns_to_drop = []
+    if 'RAFM File Name' in cf_argo.columns:
+        columns_to_drop.append('RAFM File Name')
+    if 'UVSG File Name' in cf_argo.columns:
+        columns_to_drop.append('UVSG File Name')
+    if columns_to_drop:
+        cf_argo = cf_argo.drop(columns=columns_to_drop)
+    
     if 'ARGO File Name' in cf_argo.columns:
         cols = ['ARGO File Name'] + [col for col in cf_argo.columns if col != 'ARGO File Name']
         cf_argo = cf_argo[cols]
@@ -236,7 +244,18 @@ def main(params):
         for col in numeric_cols:
             cf_rafm_merge.at[idx, col] = totals[col]
 
-    cf_rafm = cf_rafm_merge.drop(columns=['ARGO File Name', 'period'], errors='ignore')
+    columns_to_drop = []
+    if 'ARGO File Name' in cf_rafm_merge.columns:
+        columns_to_drop.append('ARGO File Name')
+    if 'period' in cf_rafm_merge.columns:
+        columns_to_drop.append('period')
+    if 'UVSG File Name' in cf_rafm_merge.columns:
+        columns_to_drop.append('UVSG File Name')
+    if columns_to_drop:
+        cf_rafm = cf_rafm_merge.drop(columns=columns_to_drop)
+    else:
+        cf_rafm = cf_rafm_merge.copy()
+    
     cf_rafm['dac'] = -cf_rafm['r_acq_cost']
     cf_rafm['nattr_exp'] = cf_rafm[['nattr_exp_acq', 'nattr_exp_inv', 'nattr_exp_maint']].sum(axis=1)
     cf_rafm['pv_clm_surr_pw_n'] = cf_rafm[['pv_surr', 'pv_pw_n']].sum(axis=1)

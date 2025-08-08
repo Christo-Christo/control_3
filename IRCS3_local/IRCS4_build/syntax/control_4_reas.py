@@ -134,7 +134,15 @@ def main(params):
     cf_argo = cf_argo[['File_Name'] + [col for col in cf_argo.columns if col != 'File_Name']]
     cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name', 'DAC_COV_UNITS': 'dac_cov_units'})
     cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
-    cf_argo = cf_argo.drop(columns = ['RAFM File Name'])
+    
+    columns_to_drop = []
+    if 'RAFM File Name' in cf_argo.columns:
+        columns_to_drop.append('RAFM File Name')
+    if 'UVSG File Name' in cf_argo.columns:
+        columns_to_drop.append('UVSG File Name')
+    if columns_to_drop:
+        cf_argo = cf_argo.drop(columns=columns_to_drop)
+    
     file_paths_rafm = [f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx')) if not os.path.basename(f).startswith('~$')]
     file_entries = [(f, os.path.splitext(os.path.basename(f))[0]) for f in file_paths_rafm]
 
@@ -206,7 +214,16 @@ def main(params):
             for col in numeric_cols:
                 cf_rafm_merge.at[idx, col] = total_values[col]
 
-    cf_rafm = cf_rafm_merge.drop(columns=['ARGO File Name'])
+    columns_to_drop = []
+    if 'ARGO File Name' in cf_rafm_merge.columns:
+        columns_to_drop.append('ARGO File Name')
+    if 'UVSG File Name' in cf_rafm_merge.columns:
+        columns_to_drop.append('UVSG File Name')
+    if columns_to_drop:
+        cf_rafm = cf_rafm_merge.drop(columns=columns_to_drop)
+    else:
+        cf_rafm = cf_rafm_merge.copy()
+    
     cf_rafm['dac_cov_units'] = cf_rafm['cov_units']
 
     rafm_manual = pd.read_excel(rafm_manual_path, sheet_name = 'Sheet1',engine = 'openpyxl')
@@ -276,4 +293,3 @@ def main(params):
 if __name__ == '__main__':
     import multiprocessing
     multiprocessing.freeze_support()
-
