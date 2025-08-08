@@ -121,8 +121,6 @@ def process_input_file(file_path):
                     rafm1_df = result[rafm_sheet_1]
                     rafm2_df = result[rafm_sheet_2]
                     manual_df = result[manual_sheet]
-                    nrows = df_sheet.shape[0]
-                    ncols = df_sheet.shape[1]
                     max_col_cf = xl_col_to_name(cf_df.shape[1] - 1)
                     max_col_rafm1 = xl_col_to_name(rafm1_df.shape[1] - 1)
                     max_col_rafm2 = xl_col_to_name(rafm2_df.shape[1] - 1)
@@ -158,8 +156,6 @@ def process_input_file(file_path):
                     cf_df = result[cf_sheet]
                     rafm_df = result[rafm_sheet]
                     manual_df = result[manual_sheet]
-                    nrows = df_sheet.shape[0]
-                    ncols = df_sheet.shape[1]
                     max_col_cf = xl_col_to_name(cf_df.shape[1] - 1)
                     max_col_rafm = xl_col_to_name(rafm_df.shape[1] - 1)
                     max_col_manual = xl_col_to_name(manual_df.shape[1] - 1)
@@ -197,8 +193,6 @@ def process_input_file(file_path):
                     cf_df = result[cf_sheet]
                     rafm_df = result[rafm_sheet]
                     manual_df = result[manual_sheet]
-                    nrows = df_sheet.shape[0]
-                    ncols = df_sheet.shape[1]
                     max_col_cf = xl_col_to_name(cf_df.shape[1] - 1)
                     max_col_rafm = xl_col_to_name(rafm_df.shape[1] - 1)
                     max_col_manual = xl_col_to_name(manual_df.shape[1] - 1)
