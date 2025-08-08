@@ -464,14 +464,14 @@ def main(params):
             final[col] = pd.NA
     logic_row = sign_logic.iloc[0]
 
-    cf_rafm = cf_rafm.groupby('RAFM File Name', as_index = False).first()
-    global_filter_rafm = global_filter_rafm.rename(columns = {'File Name':'RAFM File Name'})
-    cf_rafm = pd.merge(cf_rafm,global_filter_rafm,on = 'RAFM File Name', how = 'left')
-    uvsg = uvsg.groupby('UVSG File Name', as_index = False).first()
-    global_filter_uvsg = global_filter_uvsg.rename(columns = {'File Name':'UVSG File Name'})
-    uvsg = pd.merge(uvsg,global_filter_uvsg,on = 'UVSG File Name', how = 'left')
     mapping_code = global_filter_rafm.drop(columns = {'File Name'})
     mapping = pd.concat([code_rafm,mapping_code], axis = 1)
+    global_filter_rafm = global_filter_rafm.groupby('File Name', as_index = False).first()
+    global_filter_rafm = global_filter_rafm.rename(columns = {'File Name':'RAFM File Name'})
+    cf_rafm = pd.merge(cf_rafm,global_filter_rafm,on = 'RAFM File Name', how = 'left')
+    global_filter_uvsg = global_filter_uvsg.groupby('File Name', as_index = False).first()
+    global_filter_uvsg = global_filter_uvsg.rename(columns = {'File Name':'UVSG File Name'})
+    uvsg = pd.merge(uvsg,global_filter_uvsg,on = 'UVSG File Name', how = 'left')
 
     valid_cols = [col for col in logic_row.index if col in cf_argo.columns]
     def check_sign(val, logic_sign):

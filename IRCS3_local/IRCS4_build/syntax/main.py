@@ -59,7 +59,6 @@ def process_input_file(file_path):
     os.makedirs(output_path, exist_ok=True)
     output_file = os.path.join(output_path, output_filename)
 
-    # Record processing start time for Speed Duration
     process_start_time = time.time()
 
     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
@@ -91,7 +90,6 @@ def process_input_file(file_path):
                     else:
                         worksheet.set_column(col_idx, col_idx, None, format_accounting)
             else:
-                # Fallback jika tidak ada column names
                 worksheet.set_column(0, df_sheet.shape[1] - 1, None, format_accounting)
 
             if sheet_name != 'Control':
@@ -105,7 +103,14 @@ def process_input_file(file_path):
             if sheet_name.lower().startswith("checking summary"):
                 nrows, ncols = df_sheet.shape
                 print(f"Debug: Processing {sheet_name}, nrows={nrows}, ncols={ncols}")
+                nomor_kolom = df_sheet.iloc[:, 0]
 
+                nomor_kolom = nomor_kolom.dropna()
+                if not nomor_kolom.empty:
+                    nrows = int(nomor_kolom.max()) + 1 
+                else:
+                    nrows = df_sheet.shape[0]
+                    
                 if jenis == 'trad':
                     cf_sheet = 'CF ARGO AZTRAD'
                     rafm_sheet_1 = 'RAFM Output AZTRAD'

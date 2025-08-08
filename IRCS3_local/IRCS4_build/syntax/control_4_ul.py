@@ -272,7 +272,7 @@ def main(params):
 
     mapping_code = global_filter_rafm.drop(columns = {'File Name'})
     mapping = pd.concat([code,mapping_code], axis = 1)
-    cf_rafm = cf_rafm.groupby('RAFM File Name', as_index = False).first()
+    global_filter_rafm = global_filter_rafm.groupby('File Name', as_index = False).first()
     global_filter_rafm = global_filter_rafm.rename(columns = {'File Name':'RAFM File Name'})
     cf_rafm = pd.merge(cf_rafm,global_filter_rafm,on = 'RAFM File Name', how = 'left')
     logic_row = sign_logic.iloc[0]
