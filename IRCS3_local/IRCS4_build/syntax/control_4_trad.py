@@ -464,6 +464,12 @@ def main(params):
             final[col] = pd.NA
     logic_row = sign_logic.iloc[0]
 
+    cf_rafm = cf_rafm.groupby('RAFM File Name', as_index = False).first()
+    global_filter_rafm = global_filter_rafm.rename(columns = {'File Name':'RAFM File Name'})
+    cf_rafm = pd.merge(cf_rafm,global_filter_rafm,on = 'RAFM File Name', how = 'Left')
+    uvsg = uvsg.groupby('RAFM File Name', as_index = False).first()
+    global_filter_uvsg = global_filter_uvsg.rename(columns = {'File Name':'UVSG File Name'})
+    uvsg = pd.merge(uvsg,global_filter_uvsg,on = 'UVSG File Name', how = 'Left')
     mapping_code = global_filter_rafm.drop(columns = {'File Name'})
     mapping = pd.concat([code_rafm,mapping_code], axis = 1)
 
