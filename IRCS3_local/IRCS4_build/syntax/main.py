@@ -102,7 +102,6 @@ def process_input_file(file_path):
 
             if sheet_name.lower().startswith("checking summary"):
                 nrows, ncols = df_sheet.shape
-                print(f"Debug: Processing {sheet_name}, nrows={nrows}, ncols={ncols}")
                 nomor_kolom = df_sheet.iloc[:, 0]
 
                 nomor_kolom = nomor_kolom.dropna()
@@ -131,7 +130,6 @@ def process_input_file(file_path):
                     max_row_rafm2 = rafm2_df.shape[0] + 1
                     max_row_manual = manual_df.shape[0] + 1
 
-                    print(f"Debug TRAD: Processing ALL rows (1 to {nrows-1}), columns 4 to {ncols-1}")
                     for row_idx in range(1, nrows):
                         for col_idx in range(4, ncols):
                             col_letter = xl_col_to_name(col_idx)
@@ -164,7 +162,6 @@ def process_input_file(file_path):
                     max_row_rafm = rafm_df.shape[0] + 1
                     max_row_manual = manual_df.shape[0] + 1
 
-                    print(f"Debug UL: Processing ALL rows (1 to {nrows-1}), columns 3 to {ncols-1}")
                     for row_idx in range(1, nrows):
                         for col_idx in range(3, ncols): 
                             col_letter = xl_col_to_name(col_idx)
@@ -201,7 +198,6 @@ def process_input_file(file_path):
                     max_row_rafm = rafm_df.shape[0] + 1
                     max_row_manual = manual_df.shape[0] + 1
 
-                    print(f"Debug REAS: Processing rows 1 to {nrows-1}, columns 3 to {ncols-1}")
                     for row_idx in range(1, nrows):
                         for col_idx in range(3, ncols): 
                             col_letter = xl_col_to_name(col_idx)
