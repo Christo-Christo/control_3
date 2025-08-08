@@ -1,0 +1,13 @@
+1.  clone the repository to any local folder
+2.  copy installer to the DV local folder
+3.  copy out py13 >> build13, dist13, bootstrap_env13.spec to DV local folder
+4.  in visual studio code open the DV local folder
+5.  Open terminal ctrl+shift+`
+6.  pick the bash git bash/bash terminal (make sure it displays the correct DV local folder)
+7.  type the following code and press enter and let the code run
+        ./dist13/bootstrap_env13.exe
+8.  type the following code
+        source .venv/scripts/activate
+9.  enter the expected input Input Sheet.xlsx, save the file
+10. update the path to Input Sheet.xlsx in IRCS2_input.py (variable= CODE_LIBRARY_path), save the file
+11. run the IRCS2_program.py file
