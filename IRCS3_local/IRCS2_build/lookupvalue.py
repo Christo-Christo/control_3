@@ -73,25 +73,44 @@ ul_currency_totals = (
 )
 ul_currency_totals['Currency'] = 'UL_' + ul_currency_totals['Currency']
 
-# TRAD Data Processing - CORRECTED
-# Get TRAD DV data (hanya ada: product_group, pol_num, pre_ann, sum_assd, loan_sa)
-trad_dv_metrics = trad.trad_dv_final.copy()
-trad_dv_metrics = trad_dv_metrics.drop(columns=['loan_sa'])
-# Tambahkan total_fund_sum = 0 karena TRAD tidak punya kolom ini
-trad_dv_metrics['total_fund_sum'] = 0
-# Sekarang pilih kolom yang kita butuhkan
-trad_dv_metrics = trad_dv_metrics[
-    ['product_group', 'pol_num', 'sum_assd', 'pre_ann', 'total_fund_sum']
-]
+# TRAD Data Processing - FIXED
+# Get TRAD DV data - check actual columns first
+print("TRAD DV columns:", trad.trad_dv_final.columns.tolist())
 
-# Get TRAD stat data (hanya ada: product_group, POLICY_REF_Count, pre_ann_Sum, sum_assd_Sum)
+# Get available columns from trad_dv_final
+trad_dv_metrics = trad.trad_dv_final.copy()
+
+# Check if 'loan_sa' exists before dropping it
+if 'loan_sa' in trad_dv_metrics.columns:
+    trad_dv_metrics = trad_dv_metrics.drop(columns=['loan_sa'])
+
+# Add total_fund_sum = 0 for TRAD (since it doesn't have this column)
+trad_dv_metrics['total_fund_sum'] = 0
+
+# Select available columns - adjust based on what actually exists
+available_dv_cols = ['product_group']
+for col in ['pol_num', 'sum_assd', 'pre_ann']:
+    if col in trad_dv_metrics.columns:
+        available_dv_cols.append(col)
+available_dv_cols.append('total_fund_sum')  # We just added this
+
+trad_dv_metrics = trad_dv_metrics[available_dv_cols]
+
+# Get TRAD stat data - check actual columns first
+print("TRAD stat columns:", trad.full_stat_total.columns.tolist())
+
 trad_stat_metrics = trad.full_stat_total.copy()
-# Tambahkan total_fund_sum = 0 karena TRAD tidak punya kolom ini
+# Add total_fund_sum = 0 for TRAD stat data too
 trad_stat_metrics['total_fund_sum'] = 0
-# Sekarang pilih kolom yang kita butuhkan
-trad_stat_metrics = trad_stat_metrics[
-    ['product_group', 'POLICY_REF_Count', 'sum_assd_Sum', 'pre_ann_Sum', 'total_fund_sum']
-]
+
+# Select available columns
+available_stat_cols = ['product_group']
+for col in ['POLICY_REF_Count', 'sum_assd_Sum', 'pre_ann_Sum']:
+    if col in trad_stat_metrics.columns:
+        available_stat_cols.append(col)
+available_stat_cols.append('total_fund_sum')  # We just added this
+
+trad_stat_metrics = trad_stat_metrics[available_stat_cols]
 
 # Merge TRAD data
 trad_merged = pd.merge(trad_dv_metrics, trad_stat_metrics, on='product_group', how='outer')
@@ -123,36 +142,77 @@ trad_lookup_table = trad_lookup_table[trad_first_three + trad_rest]
 # Add blank column
 trad_lookup_table['New Blank'] = ''
 
-# Currency totals for TRAD
-trad_metrics = ['pol_num', 'sum_assd', 'pre_ann', 'total_fund_sum', 'POLICY_REF_Count', 'sum_assd_Sum', 'pre_ann_Sum']
+# Currency totals for TRAD - use only available columns
+trad_available_metrics = []
+for col in ['pol_num', 'sum_assd', 'pre_ann', 'total_fund_sum', 'POLICY_REF_Count', 'sum_assd_Sum', 'pre_ann_Sum']:
+    if col in trad_lookup_table.columns:
+        trad_available_metrics.append(col)
 
-trad_currency_totals = trad_lookup_table.groupby('currency').sum(numeric_only=True).reset_index()
+trad_currency_totals = trad_lookup_table.groupby('currency')[trad_available_metrics].sum(numeric_only=True).reset_index()
 trad_currency_totals['currency'] = 'TRAD_' + trad_currency_totals['currency']
 
 # Final merged table for display (combining both UL and TRAD)
-# Align column structures first
+# First, let's align column structures properly
 ul_display_cols = [
     'Product code', 'Grouping DV', 'product_group', 
     'pol_num', 'sum_assur', 'pre_ann', 'total_fund',
     'POLICY_NO_Count', 'PR_SA_Sum', 'pre_ann_Sum', 'total_fund_Sum'
 ]
 
-trad_display_cols = [
-    'Product code', 'Grouping DV', 'product_group',
-    'pol_num', 'sum_assd', 'pre_ann', 'total_fund_sum',
-    'POLICY_REF_Count', 'sum_assd_Sum', 'pre_ann_Sum', 'total_fund_sum'
-]
-
-# Rename TRAD columns to match UL naming
-trad_display = trad_lookup_table[trad_display_cols].copy()
-trad_display = trad_display.rename(columns={
+# For TRAD, use available columns and create mapping
+trad_column_mapping = {
     'sum_assd': 'sum_assur',
-    'total_fund_sum': 'total_fund',
+    'total_fund_sum': 'total_fund', 
     'POLICY_REF_Count': 'POLICY_NO_Count',
     'sum_assd_Sum': 'PR_SA_Sum'
-})
+}
 
+# Start with basic columns that should exist
+trad_base_cols = ['Product code', 'Grouping DV', 'product_group']
+
+# Add available columns with proper mapping
+trad_display_cols = trad_base_cols.copy()
+for orig_col, target_col in [
+    ('pol_num', 'pol_num'),
+    ('sum_assd', 'sum_assur'), 
+    ('pre_ann', 'pre_ann'),
+    ('total_fund_sum', 'total_fund'),
+    ('POLICY_REF_Count', 'POLICY_NO_Count'),
+    ('sum_assd_Sum', 'PR_SA_Sum'),
+    ('pre_ann_Sum', 'pre_ann_Sum'),
+    ('total_fund_sum', 'total_fund_Sum')  # Note: using same source for both fund columns
+]:
+    if orig_col in trad_lookup_table.columns:
+        trad_display_cols.append(orig_col)
+
+# Create TRAD display dataframe with available columns
+trad_display = trad_lookup_table[trad_display_cols].copy()
+
+# Rename columns to match UL naming
+rename_dict = {}
+for old_name, new_name in trad_column_mapping.items():
+    if old_name in trad_display.columns:
+        rename_dict[old_name] = new_name
+
+trad_display = trad_display.rename(columns=rename_dict)
+
+# Ensure both dataframes have the same columns by adding missing ones with 0
 ul_display = ul_lookup_table[ul_display_cols].copy()
+
+# Get all unique columns from both datasets
+all_columns = set(ul_display.columns) | set(trad_display.columns)
+
+# Add missing columns to both datasets
+for col in all_columns:
+    if col not in ul_display.columns:
+        ul_display[col] = 0
+    if col not in trad_display.columns:
+        trad_display[col] = 0
+
+# Reorder columns to match
+final_columns = ul_display_cols
+ul_display = ul_display[final_columns]
+trad_display = trad_display[final_columns]
 
 # Combine both datasets
 combined_lookup_table = pd.concat([ul_display, trad_display], ignore_index=True)
