@@ -73,18 +73,22 @@ ul_currency_totals = (
 )
 ul_currency_totals['Currency'] = 'UL_' + ul_currency_totals['Currency']
 
-# TRAD Data Processing - FIXED VERSION
+# TRAD Data Processing - CORRECTED
+# Get TRAD DV data (hanya ada: product_group, pol_num, pre_ann, sum_assd, loan_sa)
 trad_dv_metrics = trad.trad_dv_final.copy()
 trad_dv_metrics = trad_dv_metrics.drop(columns=['loan_sa'])
-# Add total_fund_sum BEFORE column filtering
+# Tambahkan total_fund_sum = 0 karena TRAD tidak punya kolom ini
 trad_dv_metrics['total_fund_sum'] = 0
+# Sekarang pilih kolom yang kita butuhkan
 trad_dv_metrics = trad_dv_metrics[
     ['product_group', 'pol_num', 'sum_assd', 'pre_ann', 'total_fund_sum']
 ]
 
+# Get TRAD stat data (hanya ada: product_group, POLICY_REF_Count, pre_ann_Sum, sum_assd_Sum)
 trad_stat_metrics = trad.full_stat_total.copy()
-# Add total_fund_sum BEFORE column filtering
+# Tambahkan total_fund_sum = 0 karena TRAD tidak punya kolom ini
 trad_stat_metrics['total_fund_sum'] = 0
+# Sekarang pilih kolom yang kita butuhkan
 trad_stat_metrics = trad_stat_metrics[
     ['product_group', 'POLICY_REF_Count', 'sum_assd_Sum', 'pre_ann_Sum', 'total_fund_sum']
 ]

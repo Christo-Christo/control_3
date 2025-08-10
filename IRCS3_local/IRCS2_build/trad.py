@@ -67,6 +67,7 @@ trad_dv_final["loan_sa"] = pd.to_numeric(
 trad_dv_final = trad_dv_final.groupby(["product_group"],as_index=False).sum(numeric_only=True)
 trad_dv_final = trad_dv_final[~(trad_dv_final["product_group"].str.startswith("A_"))]
 
+# TRAD DV final columns: product_group, pol_num, pre_ann, sum_assd, loan_sa, product, currency
 
 full_stat = pd.read_csv(input_sheet.IT_AZTRAD_path, sep = ";")
 
@@ -108,7 +109,7 @@ full_stat["sum_assd_Sum"] = pd.to_numeric(
 full_stat = full_stat.groupby(["product_group"],as_index=False).sum(numeric_only=True)
 full_stat = full_stat[~(full_stat["product_group"].str.startswith("A_") | full_stat["product_group"].str.startswith("NA_"))]
 
-full_stat
+# full_stat columns: product_group, POLICY_REF_Count, pre_ann_Sum, sum_assd_Sum
 
 summary_it = pd.read_csv(input_sheet.SUMMARY_path, sep = ",")
 summary_it["product_group"] = summary_it["prod_code_First"]+"_"+summary_it["currency_First"]
@@ -151,9 +152,7 @@ summary_it = summary_it.groupby(["product_group"],as_index=False).sum(numeric_on
 mapping_dict = pd.read_excel(input_sheet.CODE_LIBRARY_path,sheet_name = ["SPEC TRAD"],engine="openpyxl")
 mapping_dict = mapping_dict["SPEC TRAD"]
 
-mapping_dict
-
-
+# Combine full_stat + summary_it
 full_stat_total = pd.concat([full_stat,summary_it])
 full_stat_total[["product", "currency"]] = full_stat_total["product_group"].str.extract(r"(\w+)_([\w\d]+)")
 full_stat_total = full_stat_total.copy()
@@ -163,10 +162,10 @@ full_stat_total["product_group"] = full_stat_total["product"].str.cat(full_stat_
 full_stat_total = full_stat_total.drop(columns=["product","currency"])
 full_stat_total = full_stat_total.groupby(["product_group"],as_index=False).sum(numeric_only=True)
 
+# full_stat_total final columns: product_group, POLICY_REF_Count, pre_ann_Sum, sum_assd_Sum
 
 campaign = pd.read_csv(input_sheet.LGC_LGM_CAMPAIGN_path,sep=";")
 campaign = campaign.drop(columns=["campaign_Period"])
-campaign
 
 def read_csv_fallback(path, **kwargs):
     """
@@ -192,7 +191,6 @@ tradcon_input = read_csv_fallback(
 tradcon_input = tradcon_input[['POLICY_REF','PRODUCT_CODE','COVER_CODE','SUM_INSURED','CURRENCY1','POLICY_START_DATE']]
 tradcon_input = tradcon_input[tradcon_input['PRODUCT_CODE'].str.contains('lg[cm]', case=False, na=False)]
 tradcon_input = tradcon_input.groupby(["POLICY_REF"]).first().reset_index()
-tradcon_input
 
 def filter_by_month(input, reporting_month,financial_year):
    
@@ -242,7 +240,6 @@ tradsha_input = read_csv_fallback(
 tradsha_input = tradsha_input[['POLICY_REF','PRODUCT_CODE','COVER_CODE','SUM_INSURED','CURRENCY1','POLICY_START_DATE']]
 tradsha_input = tradsha_input[tradsha_input['PRODUCT_CODE'].str.contains('lg[cm]', case=False, na=False)]
 tradsha_input = tradsha_input.groupby(["POLICY_REF"]).first().reset_index()
-tradsha_input
 
 tradsha_cleaned = filter_by_month(tradsha_input,input_sheet.reporting_month, input_sheet.financial_year)
 
@@ -255,7 +252,6 @@ tradsha = tradsha_cleaned
 tradsha = tradsha.drop(columns=["POLICY_START_DATE"])
 
 merged_trad = pd.concat([tradcon,tradsha])
-merged_trad
 campaign_total = campaign.merge(merged_trad, 
                    left_on="Policy No", 
                    right_on="POLICY_REF", 
@@ -311,4 +307,4 @@ bsi = bsi_merge.drop(columns = {'Cover_code'})
 summary = summary.rename(columns = {"Grouping Raw Data" : "product_group","Bonus SA":"sum_assd"})
 summary = summary.drop(columns = {"Grouping DV","SUM_INSURED","SA After Bonus"})
 
-merged = pd.merge(trad_dv_final, full_stat, on = 'product_group',how = 'outer', suffixes = ('_dv','_it')).fillna(0)
+merged = pd.merge(trad_dv_final, full_stat_total, on = 'product_group',how = 'outer', suffixes = ('_dv','_it')).fillna(0)
