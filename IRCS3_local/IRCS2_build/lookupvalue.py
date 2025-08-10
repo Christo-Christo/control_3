@@ -73,21 +73,21 @@ ul_currency_totals = (
 )
 ul_currency_totals['Currency'] = 'UL_' + ul_currency_totals['Currency']
 
-# TRAD Data Processing
+# TRAD Data Processing - FIXED VERSION
 trad_dv_metrics = trad.trad_dv_final.copy()
 trad_dv_metrics = trad_dv_metrics.drop(columns=['loan_sa'])
+# Add total_fund_sum BEFORE column filtering
+trad_dv_metrics['total_fund_sum'] = 0
 trad_dv_metrics = trad_dv_metrics[
-    ['product_group', 'pol_num', 'sum_assd', 'pre_ann']
+    ['product_group', 'pol_num', 'sum_assd', 'pre_ann', 'total_fund_sum']
 ]
 
 trad_stat_metrics = trad.full_stat_total.copy()
-trad_stat_metrics = trad_stat_metrics[
-    ['product_group', 'POLICY_REF_Count', 'sum_assd_Sum', 'pre_ann_Sum']
-]
-
-# Add total_fund_sum column (set to 0 for TRAD)
-trad_dv_metrics['total_fund_sum'] = 0
+# Add total_fund_sum BEFORE column filtering
 trad_stat_metrics['total_fund_sum'] = 0
+trad_stat_metrics = trad_stat_metrics[
+    ['product_group', 'POLICY_REF_Count', 'sum_assd_Sum', 'pre_ann_Sum', 'total_fund_sum']
+]
 
 # Merge TRAD data
 trad_merged = pd.merge(trad_dv_metrics, trad_stat_metrics, on='product_group', how='outer')
@@ -136,7 +136,7 @@ ul_display_cols = [
 trad_display_cols = [
     'Product code', 'Grouping DV', 'product_group',
     'pol_num', 'sum_assd', 'pre_ann', 'total_fund_sum',
-    'POLICY_REF_Count', 'sum_assd_Sum', 'pre_ann_Sum', 'total_fund_Sum'
+    'POLICY_REF_Count', 'sum_assd_Sum', 'pre_ann_Sum', 'total_fund_sum'
 ]
 
 # Rename TRAD columns to match UL naming
