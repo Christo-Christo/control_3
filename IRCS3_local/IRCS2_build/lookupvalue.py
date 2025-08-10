@@ -174,6 +174,6 @@ trad_currency_summary = trad_combined.groupby('Currency')[combined_metrics].sum(
 trad_currency_summary['Currency'] = 'TRAD_' + trad_currency_summary['Currency']
 
 # Export variables for use in main program
-full_lookup_table = combined_lookup_table  
-currency_totals = ul_currency_summary      
-agg_all = trad_currency_summary          
+full_lookup_table = combined_lookup_table  # Main table for display
+currency_totals = ul_currency_summary      # UL currency summaries
+agg_all = trad_currency_summary           # TRAD currency summaries

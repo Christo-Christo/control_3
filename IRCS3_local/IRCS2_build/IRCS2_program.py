@@ -16,8 +16,6 @@ def elapsed_time(start,end):
     else:
         print(f"\n RUNTIME: {round((end_time - start_time), 2)} second")
 
-
-
 ############### EXCEL FORMATTING
 start_time = time.time()
 wb = xlsxwriter.Workbook(xlsx_output, {'nan_inf_to_errors': True})
@@ -61,7 +59,6 @@ header_table_notfreezed2_frm = wb.add_format({'bold': True, 'bg_color': '#3A3838
                                 'bottom_color': 'white', 'left': 1,'left_color': 'white',
                                 'right': 1,'right_color': 'white'})
 
-
 for c,h in enumerate(header_table_notfreezed1):
     ws.merge_range(0, 4 * (c + 1), 0, (4 * (c + 1)) + 3, h, header_table_notfreezed1_frm)
     ws.merge_range(8, 4 * (c + 1), 8, (4 * (c + 1)) + 3, h, header_table_notfreezed1_frm)
@@ -73,7 +70,7 @@ for x in range(1, len(header_table_notfreezed1) + 1):
 
 ws.write(9, 20, 'Remarks', header_table_notfreezed2_frm)
 
-####################### DATA ENTRY ROW 3
+####################### DATA ENTRY ROW 3 (Keep existing raw data)
 sum_ul_dv_raw = UL.ul_dv.sum()
 clean_ul_dv_raw = sum_ul_dv_raw.iloc[1:].tolist()
 clean_ul_dv_raw[1], clean_ul_dv_raw[2] = clean_ul_dv_raw[2], clean_ul_dv_raw[1]
@@ -92,59 +89,77 @@ for i in range(len(clean_ul_dv_raw)):
 for c, item in enumerate(sum_diff_raw):
     ws.write(2, c + 4 * 3, item, wb.add_format({'num_format': number_format}))
 
+####################### DATA ENTRY ROW 4 - Excel Formulas
+for col_idx in range(4):  # E, F, G, H columns (DV Output)
+    col_letter = chr(69 + col_idx)
+    formula = f'=SUM({col_letter}11:{col_letter}999)'
+    ws.write_formula(3, 4 + col_idx, formula, wb.add_format({'num_format': number_format}))
 
-####################### DATA ENTRY ROW 4
-sum_ul_dv = UL.summary_ul_dv_final
-for c, item in enumerate(sum_ul_dv.iloc[0]):
-    ws.write(3, c + 4, item, wb.add_format({'num_format': number_format}))
+for col_idx in range(4):  # I, J, K, L columns (Raw Data)
+    col_letter = chr(73 + col_idx)
+    formula = f'=SUM({col_letter}11:{col_letter}999)'
+    ws.write_formula(3, 8 + col_idx, formula, wb.add_format({'num_format': number_format}))
 
-sum_full_stat = UL.summary_full_stat_total
-for c, item in enumerate(sum_full_stat.iloc[0]):
-    ws.write(3, c + 4 * 2, item, wb.add_format({'num_format': number_format}))
+# Checking Results formulas
+checking_formulas = ['=E4-I4', '=F4-J4', '=G4-K4', '=H4-L4']
+for idx, formula in enumerate(checking_formulas):
+    ws.write_formula(3, 12 + idx, formula, wb.add_format({'num_format': number_format}))
 
-sum_diff_total = UL.summary_diff_total
-for c, item in enumerate(sum_diff_total.iloc[0]):
-    ws.write(3, c + 4 * 3, item, wb.add_format({'num_format': number_format}))
-    
-    
 ######################## Diff row
 for x in range(1, len(header_table_notfreezed1)):
     for y in range(len(header_table_notfreezed1)):
         unicode = chr(69 + (y + 4 * x) - 4)
         ws.write_formula(4, y + (4 * x), f'={unicode}3-{unicode}4', wb.add_format({'num_format': number_format,  'bg_color': '#92D050'}))
-    
-######################### Row 6
-sum_ul_dv = UL.summary_ul_dv_final
-for c, item in enumerate(sum_ul_dv.iloc[0]):
-    ws.write(5, c + 4, item, wb.add_format({'num_format': number_format}))
 
-sum_full_stat = UL.summary_full_stat_total
-for c, item in enumerate(sum_full_stat.iloc[0]):
-    ws.write(5, c + 4 * 2, item, wb.add_format({'num_format': number_format}))
-
-sum_diff_total = UL.summary_diff_total
-for c, item in enumerate(sum_diff_total.iloc[0]):
-    ws.write(5, c + 4 * 3, item, wb.add_format({'num_format': number_format}))
+######################### Row 6 - Excel Formulas for UL data (rows with 'U')
+for col_idx in range(12):  # E through P columns
+    col_letter = chr(69 + col_idx)
+    formula = f'=SUMIF(B11:B999,"U*",{col_letter}11:{col_letter}999)'
+    ws.write_formula(5, 4 + col_idx, formula, wb.add_format({'num_format': number_format}))
 
 ######################## Diff percentage
-sum_diff_percent = UL.Different_Percentage_of_Checking_Result_to_Raw_Data
-for c in range(len(header_table_notfreezed1)):
-    unicode = chr(77 + c)
-    formula = f'=IFERROR(abs({unicode}{4}/{chr(ord(unicode) - 4)}{4}),0)'
-    ws.merge_range(2, 16 + c, 3, 16 + c, formula, wb.add_format({'num_format': '0.0', 'bg_color': 'yellow', 'bold': True}))
+diff_percent_formulas = [
+    '=IFERROR(ROUND(M4/I4*100,1),0)',
+    '=IFERROR(ROUND(N4/J4*100,1),0)', 
+    '=IFERROR(ROUND(O4/K4*100,1),0)',
+    '=IFERROR(ROUND(P4/L4*100,1),0)'
+]
+for c, formula in enumerate(diff_percent_formulas):
+    ws.merge_range(2, 16 + c, 3, 16 + c, formula, wb.add_format({'num_format': '0.0%', 'bg_color': 'yellow', 'bold': True}))
 
-######################## Lookup table
+######################## Combined Lookup table with Excel formulas
+combined_table = tst.full_lookup_table
+table_size = len(combined_table)
 
-table1 = tst.full_lookup_table.iloc[:,0:15]
-table2 = tst.full_lookup_table.iloc[:,15:]
-for x in range(len(table1)):
-    for c, item in enumerate(table1.iloc[x]):
+# Write the first 11 columns (Product code through total_fund_Sum)
+for x in range(table_size):
+    for c in range(11):  # Columns A through K
+        item = combined_table.iloc[x, c]
         ws.write(10 + x, c + 1, item, wb.add_format({'num_format': number_format}))
-for x in range(len(table2)):
-    for c, item in enumerate(table2.iloc[x]):
-        if type(item) == numpy.float64:
-            item = round(item,1)
-        ws.write(10 + x, 16 + c, item, wb.add_format({'num_format': '%'}))
+
+# Write Excel formulas for difference columns M through P
+for x in range(table_size):
+    row_num = 11 + x
+    diff_formulas = [
+        f'=E{row_num}-I{row_num}',    # Column M
+        f'=F{row_num}-J{row_num}',    # Column N
+        f'=G{row_num}-K{row_num}',    # Column O
+        f'=H{row_num}-L{row_num}'     # Column P
+    ]
+    for c, formula in enumerate(diff_formulas):
+        ws.write_formula(10 + x, 12 + c, formula, wb.add_format({'num_format': number_format}))
+
+# Write Excel formulas for percentage columns Q through T
+for x in range(table_size):
+    row_num = 11 + x
+    percentage_formulas = [
+        f'=IFERROR(M{row_num}/I{row_num},0)',
+        f'=IFERROR(N{row_num}/J{row_num},0)',
+        f'=IFERROR(O{row_num}/K{row_num},0)',
+        f'=IFERROR(P{row_num}/L{row_num},0)'
+    ]
+    for c, formula in enumerate(percentage_formulas):
+        ws.write_formula(10 + x, 16 + c, formula, wb.add_format({'num_format': '0.0%'}))
 
 ws.conditional_format('Q11:T999', {
     'type':     'cell',
@@ -153,9 +168,7 @@ ws.conditional_format('Q11:T999', {
     'format':   wb.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'}),
 })
 
-
 # Summary Checking AZTRAD SUMMARY SHEET
-
 wtrad = wb.add_worksheet('Summary_Checking_TRAD')
 
 wtrad.freeze_panes(10, 4)
@@ -181,22 +194,6 @@ for c, h in enumerate(headers_table):
                                                   'pattern': 1, 'font_color': 'white', 
                                                   'align': 'center', 'valign': 'vcenter'}))
 
-header_table_notfreezed1 = ["DV Output [1]", "Raw Data [2]", "Checking Results [1]-[2]", "Different Percentage of Checking Result to Raw Data"]
-headers_table_notfreezed2 = ["pol_e", "sa_if_m", "anp_if_m", "total_fund_sum"]
-header_table_notfreezed1_frm = wb.add_format({'bold': True, 'bg_color': '#002060', 
-                                'pattern': 1, 'font_color': 'white', 
-                                'align': 'center', 'valign': 'center',
-                                'top': 2, 'top_color':'white', 'bottom': 2,
-                                'bottom_color': 'white', 'left': 1,'left_color': 'white',
-                                'right': 1,'right_color': 'white'})
-header_table_notfreezed2_frm = wb.add_format({'bold': True, 'bg_color': '#3A3838', 
-                                'pattern': 1, 'font_color': 'white', 
-                                'align': 'center', 'valign': 'center',
-                                'top': 2, 'top_color':'white', 'bottom': 2,
-                                'bottom_color': 'white', 'left': 1,'left_color': 'white',
-                                'right': 1,'right_color': 'white'})
-
-
 for c,h in enumerate(header_table_notfreezed1):
     wtrad.merge_range(0, 4 * (c + 1), 0, (4 * (c + 1)) + 3, h, header_table_notfreezed1_frm)
     wtrad.merge_range(8, 4 * (c + 1), 8, (4 * (c + 1)) + 3, h, header_table_notfreezed1_frm)
@@ -208,8 +205,7 @@ for x in range(1, len(header_table_notfreezed1) + 1):
 
 wtrad.write(9, 20, 'Remarks', header_table_notfreezed2_frm)
 
-###################### row 3
-
+###################### row 3 (Keep existing raw data for TRAD)
 sum_trad_dv_raw = trad.trad_dv.sum()
 clean_trad_dv_raw = sum_trad_dv_raw.iloc[1:len(sum_trad_dv_raw) - 1].tolist()
 clean_trad_dv_raw[1], clean_trad_dv_raw[2] = clean_trad_dv_raw[2], clean_trad_dv_raw[1]
@@ -221,82 +217,38 @@ for c, item in enumerate(clean_trad_dv_raw):
     wtrad.write(2, c + 4, item, wb.add_format({'num_format': number_format}))
 
 def clean_stat_sum(it_path, sum_path):
-    
-    # 1) Load the two tables
-    df_full = pd.read_csv(
-    it_path,  # path to your full‐stat CSV
-    sep=";",                    # adjust if it’s not semicolon-delimited
-    encoding="utf-8",
-    on_bad_lines="skip",
-    )
-    df_sum = pd.read_csv(
-    sum_path,              # path to your Summary sheet export
-    sep=",",                    # adjust for your file’s delimiter
-    encoding="utf-8",
-    )
+    # Keep existing function
+    df_full = pd.read_csv(it_path, sep=";", encoding="utf-8", on_bad_lines="skip")
+    df_sum = pd.read_csv(sum_path, sep=",", encoding="utf-8")
 
-    # 2) Compute the three “SUM(…)+SUM(…)-SUMIFS(…)" values:
-
-    # a) POLICY_REF_Count
-    total_full       = df_full["POLICY_REF_Count"].sum()
-    total_summary    = df_sum["pol_num_Count"].sum()
-    exclude_base_na  = df_full.loc[
-        df_full["PRODUCT_CODE"].str.startswith("BASE_NA"),
-        "POLICY_REF_Count"
-    ].sum()
+    # POLICY_REF_Count
+    total_full = df_full["POLICY_REF_Count"].sum()
+    total_summary = df_sum["pol_num_Count"].sum()
+    exclude_base_na = df_full.loc[df_full["PRODUCT_CODE"].str.startswith("BASE_NA"), "POLICY_REF_Count"].sum()
     policy_ref = total_full + total_summary - exclude_base_na
 
-    # b) pre_ann_Sum
-    pre_ann_full     = df_full["pre_ann_Sum"].sum()
-    pre_ann_summary  = df_sum["pre_ann_Sum"].sum()
-    exclude_base_na2 = df_full.loc[
-        df_full["PRODUCT_CODE"].str.startswith("BASE_NA"),
-        "pre_ann_Sum"
-    ].sum()
+    # pre_ann_Sum
+    pre_ann_full = df_full["pre_ann_Sum"].sum()
+    pre_ann_summary = df_sum["pre_ann_Sum"].sum()
+    exclude_base_na2 = df_full.loc[df_full["PRODUCT_CODE"].str.startswith("BASE_NA"), "pre_ann_Sum"].sum()
     pre_ann = pre_ann_full + pre_ann_summary - exclude_base_na2
 
-    # c) sum_assd_Sum (sum assured)
-    assd_full        = df_full["sum_assd_Sum"].sum()
-    assd_summary     = df_sum["sum_assd_Sum"].sum()
-    exclude_base_na3 = df_full.loc[
-        df_full["PRODUCT_CODE"].str.startswith("BASE_NA"),
-        "sum_assd_Sum"
-    ].sum()
+    # sum_assd_Sum
+    assd_full = df_full["sum_assd_Sum"].sum()
+    assd_summary = df_sum["sum_assd_Sum"].sum()
+    exclude_base_na3 = df_full.loc[df_full["PRODUCT_CODE"].str.startswith("BASE_NA"), "sum_assd_Sum"].sum()
     sum_assured = assd_full + assd_summary - exclude_base_na3
 
-    # 3) Pack into a one-row DataFrame
-    result = pd.DataFrame([{
-        "policy_ref":  policy_ref,
-        "pre_ann_sum": pre_ann,
-        "sum_assured": sum_assured
-    }])
-
+    result = pd.DataFrame([{"policy_ref": policy_ref, "pre_ann_sum": pre_ann, "sum_assured": sum_assured}])
     return result 
 
 sum_trad_stat_raw = clean_stat_sum(IT_AZTRAD_path, SUMMARY_path)
-
 clean_trad_stat_raw_0 = sum_trad_stat_raw.values.tolist()
 clean_trad_stat_raw = clean_trad_stat_raw_0[0].copy()
 clean_trad_stat_raw[1], clean_trad_stat_raw[2] = clean_trad_stat_raw[2], clean_trad_stat_raw[1]
 clean_trad_stat_raw.append(0)
 for c, item in enumerate(clean_trad_stat_raw):
     wtrad.write(2, c + 4 * 2, item, wb.add_format({'num_format': number_format}))
-
-for c in range(len(header_table_notfreezed1)):
-    formula = f"=SUM({chr(73 + c)}11:{chr(73 + c)}897)"
-    wtrad.write(3, c + 4 * 2, formula, wb.add_format({'num_format': number_format}))
-    wtrad.write(5, c + 4 * 2, formula, wb.add_format({'num_format': number_format}))
-
-sum_trad_dv_final = trad.summary_trad_dv_final.sum()
-clean_trad_dv_final = sum_trad_dv_final.tolist()
-clean_trad_dv_final.append(0)
-for c, item in enumerate(clean_trad_dv_final):
-    wtrad.write(3, c + 4, item, wb.add_format({'num_format': number_format}))
-    wtrad.write(5, c + 4, item, wb.add_format({'num_format': number_format}))
-
-for c in range(len(clean_trad_stat_raw)):
-    formula = f"=SUM({chr(77 + c)}11:{chr(77 + c)}897)"
-    wtrad.write(5,c + 4 * 3, formula, wb.add_format({'num_format': number_format}))
 
 sum_trad_diff_raw = []
 for i in range(len(clean_trad_dv_raw)):
@@ -305,34 +257,74 @@ for i in range(len(clean_trad_dv_raw)):
 for c, item in enumerate(sum_trad_diff_raw):
     wtrad.write(2, c + 4 * 3, item, wb.add_format({'num_format': number_format}))
 
-sum_diff_aztrad_output = trad.sum_diff_aztrad_output
-for c, item in enumerate(sum_diff_aztrad_output.iloc[0]):
-    wtrad.write(3, c + 4 * 3, item, wb.add_format({'num_format': number_format}))
-    
-sum_diff_trad_percent = trad.Different_Percentage
-for c in range(len(header_table_notfreezed1)):
-    unicode = chr(77 + c)
-    formula = f'=IFERROR(abs({unicode}{6}/{chr(ord(unicode) - 4)}{4}),0)'
-    wtrad.merge_range(2, 16 + c, 3, 16 + c, formula, wb.add_format({'num_format': '0.0', 'bg_color': 'yellow', 'bold': True}))
+####################### DATA ENTRY ROW 4 - Excel Formulas for TRAD
+for col_idx in range(4):  # E, F, G, H columns (DV Output)
+    col_letter = chr(69 + col_idx)
+    formula = f'=SUM({col_letter}11:{col_letter}999)'
+    wtrad.write_formula(3, 4 + col_idx, formula, wb.add_format({'num_format': number_format}))
 
+for col_idx in range(4):  # I, J, K, L columns (Raw Data)
+    col_letter = chr(73 + col_idx)
+    formula = f'=SUM({col_letter}11:{col_letter}999)'
+    wtrad.write_formula(3, 8 + col_idx, formula, wb.add_format({'num_format': number_format}))
+
+# Checking Results formulas
+checking_formulas_trad = ['=E4-I4', '=F4-J4', '=G4-K4', '=H4-L4']
+for idx, formula in enumerate(checking_formulas_trad):
+    wtrad.write_formula(3, 12 + idx, formula, wb.add_format({'num_format': number_format}))
+
+######################### Row 6 - Excel Formulas for TRAD data (rows with 'C*' and 'WPCI77')
+for col_idx in range(12):  # E through P columns
+    col_letter = chr(69 + col_idx)
+    formula = f'=SUMIFS({col_letter}11:{col_letter}999,B11:B999,"C*",B11:B999,"*WPCI77*")'
+    wtrad.write_formula(5, 4 + col_idx, formula, wb.add_format({'num_format': number_format}))
+
+######################## Diff percentage for TRAD
+diff_percent_formulas_trad = [
+    '=IFERROR(ROUND(M6/I4*100,1),0)',
+    '=IFERROR(ROUND(N6/J4*100,1),0)',
+    '=IFERROR(ROUND(O6/K4*100,1),0)',
+    '=IFERROR(ROUND(P6/L4*100,1),0)'
+]
+for c, formula in enumerate(diff_percent_formulas_trad):
+    wtrad.merge_range(2, 16 + c, 3, 16 + c, formula, wb.add_format({'num_format': '0.0%', 'bg_color': 'yellow', 'bold': True}))
 
 ################# DIFF ROW
 for x in range(1, len(header_table_notfreezed1)):
     for y in range(len(header_table_notfreezed1)):
         unicode = chr(69 + (y + 4 * x) - 4)
         wtrad.write_formula(4, y + (4 * x), f'={unicode}3-{unicode}4', wb.add_format({'num_format': number_format,  'bg_color': '#92D050'}))
-    
-################# LOOKUP TABLE
-table1 = tst.merged4.iloc[:,0:15]
-table2 = tst.merged4.iloc[:,15:]
-for x in range(len(table1)):
-    for c, item in enumerate(table1.iloc[x]):
+
+################# Combined Lookup Table for TRAD with same merged data
+# Write the same combined table data to TRAD sheet
+for x in range(table_size):
+    for c in range(11):  # Columns A through K
+        item = combined_table.iloc[x, c]
         wtrad.write(10 + x, c + 1, item, wb.add_format({'num_format': number_format}))
-for x in range(len(table2)):
-    for c, item in enumerate(table2.iloc[x]):
-        if type(item) == numpy.float64:
-            item = round(item,1)
-        wtrad.write(10 + x, 16 + c, item, wb.add_format({'num_format': '%'}))
+
+# Write Excel formulas for difference columns with VLOOKUP
+for x in range(table_size):
+    row_num = 11 + x
+    diff_formulas_trad = [
+        f'=E{row_num}-I{row_num}',    # Column M
+        f'=F{row_num}-J{row_num}-IFERROR(INDEX(SUMMARY_CAMPAIGN.H:H,MATCH(D{row_num},SUMMARY_CAMPAIGN.B:B,0)),0)',    # Column N with CAMPAIGN lookup
+        f'=G{row_num}-K{row_num}+IFERROR(INDEX("Summary BSI".C:C,MATCH(D{row_num},"Summary BSI".A:A,0)),0)',    # Column O with BSI lookup
+        f'=H{row_num}-L{row_num}'     # Column P
+    ]
+    for c, formula in enumerate(diff_formulas_trad):
+        wtrad.write_formula(10 + x, 12 + c, formula, wb.add_format({'num_format': number_format}))
+
+# Write Excel formulas for percentage columns Q through T
+for x in range(table_size):
+    row_num = 11 + x
+    percentage_formulas_trad = [
+        f'=IFERROR(M{row_num}/I{row_num},0)',
+        f'=IFERROR(N{row_num}/J{row_num},0)',
+        f'=IFERROR(O{row_num}/K{row_num},0)',
+        f'=IFERROR(P{row_num}/L{row_num},0)'
+    ]
+    for c, formula in enumerate(percentage_formulas_trad):
+        wtrad.write_formula(10 + x, 16 + c, formula, wb.add_format({'num_format': '0.0%'}))
 
 wtrad.conditional_format('Q11:T999', {
     'type':     'cell',
@@ -341,6 +333,7 @@ wtrad.conditional_format('Q11:T999', {
     'format':   wb.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'}),
 })
 
+# SUMMARY_CAMPAIGN SHEET
 wcampaign = wb.add_worksheet("SUMMARY_CAMPAIGN")
 wcampaign.set_column(1, 1, 14)
 wcampaign.set_column(2, 2, 8)
@@ -377,7 +370,7 @@ for x in range(len(campaign_sum)):
                                     'bottom_color': 'black', 'left': 1,'left_color': 'black',
                                     'right': 1,'right_color': 'black'}))
 
-# SUMMARY SHEET
+# SUMMARY SHEET WITH EXCEL FORMULAS
 wsum = wb.add_worksheet("CONTROL_2_SUMMARY")
 wsum.set_column(2, 17, max_len)
 wsum.set_column(18, 18, max_len + 5)
@@ -403,28 +396,82 @@ wsum.merge_range(1,1,2,1, 'Grouping', wb.add_format({'bold': True, 'bg_color': '
                                 'bottom_color': 'white', 'left': 1,'left_color': 'white',
                                 'right': 1,'right_color': 'white', 'valign': 'vcenter'}))
 
-currency_summary = tst.currency_totals
-for x in range(len(currency_summary)):
-    for c, item in enumerate(currency_summary.iloc[x]):
-        wsum.write(3 + x, c + 1, item, wb.add_format({'num_format': number_format}))
+# UL Currency Summary with Excel formulas
+ul_currency_data = tst.currency_totals
+for x in range(len(ul_currency_data)):
+    # Write currency name
+    wsum.write(3 + x, 1, ul_currency_data.iloc[x, 0], wb.add_format({'num_format': number_format}))
+    
+    # Write data columns with Excel formulas for summing UL rows
+    for col_idx in range(8):  # 8 data columns
+        col_letter = chr(66 + col_idx)  # B, C, D, E, F, G, H, I
+        currency_code = ul_currency_data.iloc[x, 0].replace('UL_', '')
+        formula = f'=SUMIF("Summary_Checking_UL".D11:D999,"*{currency_code}","Summary_Checking_UL".{col_letter}11:{col_letter}999)'
+        wsum.write_formula(3 + x, 2 + col_idx, formula, wb.add_format({'num_format': number_format}))
 
-for y in range(len(currency_summary)):
-    for x in range(len(header_table_notfreezed1)):
-        unicode = chr(75 + x)
-        formula = f'=IFERROR(abs({unicode}{4 + y}/{chr(ord(unicode) - 4)}{4 + y}),0)'
-        wsum.write_formula(3 + y, 14 + x, formula, wb.add_format({'num_format': '0.0'}))
- 
-currency_summary_trad = tst.agg_all
-for x in range(len(currency_summary_trad)):
-    for c, item in enumerate(currency_summary_trad.iloc[x]):
-        wsum.write(5 + x, c + 1, item, wb.add_format({'num_format': number_format}))
+# Calculate checking results with formulas for UL
+for y in range(len(ul_currency_data)):
+    row_num = 4 + y
+    checking_results_formulas = [
+        f'=C{row_num}-F{row_num}',    # Column K
+        f'=D{row_num}-G{row_num}',    # Column L  
+        f'=E{row_num}-H{row_num}',    # Column M
+        f'=F{row_num}-I{row_num}'     # Column N
+    ]
+    for idx, formula in enumerate(checking_results_formulas):
+        wsum.write_formula(3 + y, 10 + idx, formula, wb.add_format({'num_format': number_format}))
 
-for y in range(len(currency_summary_trad)):
-    for x in range(len(header_table_notfreezed1)):
-        unicode = chr(75 + x)
-        formula = f'=IFERROR(abs({unicode}{6 + y}/{chr(ord(unicode) - 4)}{6 + y}),0)'
-        wsum.write_formula(5 + y, 14 + x, formula, wb.add_format({'num_format': '0.0'})) 
- 
+# Percentage formulas for UL data
+for y in range(len(ul_currency_data)):
+    row_num = 4 + y
+    percentage_formulas = [
+        f'=IFERROR(ABS(K{row_num}/F{row_num}),0)',
+        f'=IFERROR(ABS(L{row_num}/G{row_num}),0)',
+        f'=IFERROR(ABS(M{row_num}/H{row_num}),0)',
+        f'=IFERROR(ABS(N{row_num}/I{row_num}),0)'
+    ]
+    for idx, formula in enumerate(percentage_formulas):
+        wsum.write_formula(3 + y, 14 + idx, formula, wb.add_format({'num_format': '0.0%'}))
+
+# TRAD Currency Summary with Excel formulas
+trad_currency_data = tst.agg_all
+ul_rows = len(ul_currency_data)
+
+for x in range(len(trad_currency_data)):
+    # Write currency name
+    wsum.write(3 + ul_rows + x, 1, trad_currency_data.iloc[x, 0], wb.add_format({'num_format': number_format}))
+    
+    # Write data columns with Excel formulas for summing TRAD rows
+    for col_idx in range(8):  # 8 data columns
+        col_letter = chr(66 + col_idx)  # B, C, D, E, F, G, H, I
+        currency_code = trad_currency_data.iloc[x, 0].replace('TRAD_', '')
+        formula = f'=SUMIF("Summary_Checking_TRAD".D11:D999,"*{currency_code}","Summary_Checking_TRAD".{col_letter}11:{col_letter}999)'
+        wsum.write_formula(3 + ul_rows + x, 2 + col_idx, formula, wb.add_format({'num_format': number_format}))
+
+# Calculate checking results with formulas for TRAD
+for y in range(len(trad_currency_data)):
+    row_num = 4 + ul_rows + y
+    checking_results_formulas = [
+        f'=C{row_num}-F{row_num}',    # Column K
+        f'=D{row_num}-G{row_num}',    # Column L
+        f'=E{row_num}-H{row_num}',    # Column M
+        f'=F{row_num}-I{row_num}'     # Column N
+    ]
+    for idx, formula in enumerate(checking_results_formulas):
+        wsum.write_formula(3 + ul_rows + y, 10 + idx, formula, wb.add_format({'num_format': number_format}))
+
+# Percentage formulas for TRAD data
+for y in range(len(trad_currency_data)):
+    row_num = 4 + ul_rows + y
+    percentage_formulas = [
+        f'=IFERROR(ABS(K{row_num}/F{row_num}),0)',
+        f'=IFERROR(ABS(L{row_num}/G{row_num}),0)',
+        f'=IFERROR(ABS(M{row_num}/H{row_num}),0)',
+        f'=IFERROR(ABS(N{row_num}/I{row_num}),0)'
+    ]
+    for idx, formula in enumerate(percentage_formulas):
+        wsum.write_formula(3 + ul_rows + y, 14 + idx, formula, wb.add_format({'num_format': '0.0%'}))
+
 wsum.conditional_format('O4:R999', {
     'type':     'cell',
     'criteria': '>',
@@ -432,6 +479,7 @@ wsum.conditional_format('O4:R999', {
     'format':   wb.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'}),
 })
 
+# BSI SUMMARY SHEET
 w_bsi = wb.add_worksheet("Summary BSI")
 
 w_bsi.set_column(0, 0, 14) 
@@ -456,7 +504,6 @@ for row_num, row_data in trad.bsi_merge.iterrows():
     w_bsi.write(row_num + 1, 0, row_data['Cover_code'], cell_format_str)
     w_bsi.write(row_num + 1, 1, row_data['product_group'], cell_format_str)
     w_bsi.write(row_num + 1, 2, row_data['anp'], cell_format_num)
-
 
 wb.close()
 end_time = time.time()
