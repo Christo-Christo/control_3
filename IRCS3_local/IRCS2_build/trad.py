@@ -64,6 +64,12 @@ trad_dv_final["loan_sa"] = pd.to_numeric(
 
 trad_dv_final = trad_dv_final.groupby(["product_group"],as_index=False).sum(numeric_only=True)
 trad_dv_final = trad_dv_final[~(trad_dv_final["product_group"].str.startswith("A_"))]
+cols = list(trad_dv_final.columns)
+pre_idx = cols.index('pre_ann')
+sum_idx = cols.index('sum_assd')
+cols[pre_idx], cols[sum_idx] = cols[sum_idx], cols[pre_idx]
+trad_dv_final = trad_dv_final[cols]
+trad_dv_final['loan_sa'] = 0
 
 full_stat = pd.read_csv(input_sheet.IT_AZTRAD_path, sep = ";")
 
@@ -104,47 +110,47 @@ full_stat["sum_assd_Sum"] = pd.to_numeric(
 full_stat = full_stat.groupby(["product_group"],as_index=False).sum(numeric_only=True)
 full_stat = full_stat[~(full_stat["product_group"].str.startswith("A_") | full_stat["product_group"].str.startswith("NA_"))]
 
-summary = pd.read_csv(input_sheet.SUMMARY_path, sep = ",")
-summary["product_group"] = summary["prod_code_First"]+"_"+summary["currency_First"]
-summary = summary.drop(columns=["prod_code_First","currency_First"])
-summary = summary.rename(columns={"pol_num_Count":"POLICY_REF_Count" })
+summary_it = pd.read_csv(input_sheet.SUMMARY_path, sep = ",")
+summary_it["product_group"] = summary_it["prod_code_First"]+"_"+summary_it["currency_First"]
+summary_it = summary_it.drop(columns=["prod_code_First","currency_First"])
+summary_it = summary_it.rename(columns={"pol_num_Count":"POLICY_REF_Count" })
 
-summary["POLICY_REF_Count"] = (
-    summary["POLICY_REF_Count"]
+summary_it["POLICY_REF_Count"] = (
+    summary_it["POLICY_REF_Count"]
     .astype(str)                                
     .str.replace(",", ".", regex=False)         
 )
 
-summary["POLICY_REF_Count"] = pd.to_numeric(
-    summary["POLICY_REF_Count"], errors="coerce"
+summary_it["POLICY_REF_Count"] = pd.to_numeric(
+    summary_it["POLICY_REF_Count"], errors="coerce"
 )
 
-summary["pre_ann_Sum"] = (
-    summary["pre_ann_Sum"]
+summary_it["pre_ann_Sum"] = (
+    summary_it["pre_ann_Sum"]
     .astype(str)                                
     .str.replace(",", ".", regex=False)         
 )
 
-summary["pre_ann_Sum"] = pd.to_numeric(
-    summary["pre_ann_Sum"], errors="coerce"
+summary_it["pre_ann_Sum"] = pd.to_numeric(
+    summary_it["pre_ann_Sum"], errors="coerce"
 )
 
-summary["sum_assd_Sum"] = (
-    summary["sum_assd_Sum"]
+summary_it["sum_assd_Sum"] = (
+    summary_it["sum_assd_Sum"]
     .astype(str)                                
     .str.replace(",", ".", regex=False)         
 )
 
-summary["sum_assd_Sum"] = pd.to_numeric(
-    summary["sum_assd_Sum"], errors="coerce"
+summary_it["sum_assd_Sum"] = pd.to_numeric(
+    summary_it["sum_assd_Sum"], errors="coerce"
 )
 
-summary = summary.groupby(["product_group"],as_index=False).sum(numeric_only=True)
+summary_it = summary_it.groupby(["product_group"],as_index=False).sum(numeric_only=True)
 
 mapping_dict = pd.read_excel(input_sheet.CODE_LIBRARY_path,sheet_name = ["SPEC TRAD"],engine="openpyxl")
 mapping_dict = mapping_dict["SPEC TRAD"]
 
-full_stat_total = pd.concat([full_stat,summary])
+full_stat_total = pd.concat([full_stat,summary_it])
 full_stat_total[["product", "currency"]] = full_stat_total["product_group"].str.extract(r"(\w+)_([\w\d]+)")
 full_stat_total = full_stat_total.copy()
 convert = dict(zip(mapping_dict["Old"], mapping_dict["New"]))
@@ -152,6 +158,11 @@ full_stat_total["product"] = full_stat_total["product"].map(convert).fillna(full
 full_stat_total["product_group"] = full_stat_total["product"].str.cat(full_stat_total["currency"], sep="_")
 full_stat_total = full_stat_total.drop(columns=["product","currency"])
 full_stat_total = full_stat_total.groupby(["product_group"],as_index=False).sum(numeric_only=True)
+cols = list(full_stat_total.columns)
+pre_idx = cols.index('pre_ann_Sum')
+sum_idx = cols.index('sum_assd_Sum')
+cols[pre_idx], cols[sum_idx] = cols[sum_idx], cols[pre_idx]
+full_stat_total = full_stat_total[cols]
 
 campaign = pd.read_csv(input_sheet.LGC_LGM_CAMPAIGN_path,sep=";")
 campaign = campaign.drop(columns=["campaign_Period"])
@@ -288,22 +299,35 @@ bsi = bsi_merge.drop(columns = {'Cover_code'})
 summary = summary.rename(columns = {"Grouping Raw Data" : "product_group","Bonus SA":"sum_assd"})
 summary = summary.drop(columns = {"Grouping DV","SUM_INSURED","SA After Bonus"})
 
-dfs = [trad_dv_final, full_stat_total, summary]
-
-# Create the main merged table for TRAD (this is what will be used in the Excel sheet)
-merged = reduce(lambda left, right: pd.merge(left, right, 
-                                              on='product_group', 
-                                              how='outer'), dfs)
+merged = pd.merge(trad_dv_final, full_stat_total, on="product_group", how="outer", 
+                  suffixes=("_trad_dv_final", "_full_stat"))
 
 merged.fillna(0, inplace=True)
 
-# Add BSI data to merged table
-merged_with_bsi = pd.merge(merged, bsi, on="product_group", how="outer", 
-                  suffixes=("_merged", "_bsi"))
-merged_with_bsi.fillna(0, inplace=True)
+def get_prophet_code(pg):
+    if '_IDR' in pg:
+        currency = '_IDR'
+    elif '_USD' in pg:
+        currency = '_USD'
+    else:
+        return np.nan 
+    base_name = pg.replace(currency, '')
+    match = code.loc[code['Flag Code'] == base_name, 'Prophet Code']
+    if not match.empty:
+        return match.iloc[0]
+    else:
+        return base_name
 
-# Use this as the final merged table
-merged = merged_with_bsi
+merged.insert(0, 'col1', merged['product_group'].apply(get_prophet_code))
 
-# Keep the original data for row 3 calculations
-trad_dv = trad_dv  # Keep original for row 3
+def add_currency(row):
+    if '_IDR' in row['product_group']:
+        return f"{row['col1']}_IDR"
+    elif '_USD' in row['product_group']:
+        return f"{row['col1']}_USD"
+    else:
+        return row['col1']
+
+merged.insert(1, 'col2', merged.apply(add_currency, axis=1))
+
+trad_dv = trad_dv 

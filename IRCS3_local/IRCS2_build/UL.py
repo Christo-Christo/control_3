@@ -123,11 +123,34 @@ sum_idx = cols.index('PR_SA_Sum')
 cols[pre_idx], cols[sum_idx] = cols[sum_idx], cols[pre_idx]
 full_stat = full_stat[cols]
 
-# Create the merged table for UL (this is what will be used in the Excel sheet)
 merged = pd.merge(ul_dv_final, full_stat, on="product_group", how="outer", 
                   suffixes=("_ul_dv_final", "_full_stat"))
 
 merged.fillna(0, inplace=True)
+def get_prophet_code(pg):
+    if '_IDR' in pg:
+        currency = '_IDR'
+    elif '_USD' in pg:
+        currency = '_USD'
+    else:
+        return np.nan 
+    base_name = pg.replace(currency, '')
+    match = code_ul.loc[code_ul['Flag Code'] == base_name, 'Prophet Code']
+    if not match.empty:
+        return match.iloc[0]
+    else:
+        return base_name
 
-# Keep the original data for row 3 calculations
-ul_dv = ul_dv  # Keep original for row 3
+merged.insert(0, 'col1', merged['product_group'].apply(get_prophet_code))
+
+def add_currency(row):
+    if '_IDR' in row['product_group']:
+        return f"{row['col1']}_IDR"
+    elif '_USD' in row['product_group']:
+        return f"{row['col1']}_USD"
+    else:
+        return row['col1']
+
+merged.insert(1, 'col2', merged.apply(add_currency, axis=1))
+
+ul_dv = ul_dv

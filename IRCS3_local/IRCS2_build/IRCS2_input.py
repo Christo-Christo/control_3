@@ -1,7 +1,6 @@
 import pandas as pd
 
-CODE_LIBRARY_path = r'D:\1. IRCS Automation\Control 2 DEV\IRCS-v2\IRCS2_build\Input Sheet.xlsx'
-
+CODE_LIBRARY_path = r"D:\Run Control 2\IRCS2_build\Input Sheet.xlsx"
 
 
 

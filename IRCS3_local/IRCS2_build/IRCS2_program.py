@@ -24,7 +24,8 @@ percentage_format = '0.0%'
 
 # Summary checking AZUL SHEET
 ws = wb.add_worksheet('Summary_Checking_UL')
-
+merged_data = UL.merged 
+ul_last_row = 10 + len(merged_data)
 ws.freeze_panes(10, 4)
 
 headers_summary = ['Items', 'Total Input from csv', 'Total output in summary', 'Diff','AZUL']
@@ -94,7 +95,7 @@ for c, item in enumerate(sum_diff_raw):
 # Row 4: Sum formulas from E11 to L (columns 4-11)
 for col in range(4, 12):  # E to L (columns 4-11)
     col_letter = chr(ord('A') + col)
-    formula = f'=SUM({col_letter}11:{col_letter}999)'
+    formula = f'=SUM({col_letter}11:{col_letter}{ul_last_row})'
     ws.write_formula(3, col, formula, wb.add_format({'num_format': number_format}))
 
 # Columns M to P (12-15): Difference formulas
@@ -111,55 +112,58 @@ for x in range(1, len(header_table_notfreezed1)):
     
 ######################### Row 6 (UL) - Sum formulas with condition for names starting with "U"
 # For columns E to P, sum where column B (product names) starts with "U"
-for col in range(4, 16):  # E to P (columns 4-15)
+for col in range(4, 12):
     col_letter = chr(ord('A') + col)
-    formula = f'=SUMIF(B11:B999,"U*",{col_letter}11:{col_letter}999)'
+    formula = f'=SUMIF(B11:B{ul_last_row},"U*",{col_letter}11:{col_letter}{ul_last_row})'
+    ws.write_formula(5, col, formula, wb.add_format({'num_format': number_format}))
+
+for col in range(12, 16):
+    col_letter = chr(ord('A') + col)
+    formula = f'=SUM({col_letter}11:{col_letter}{ul_last_row})'
     ws.write_formula(5, col, formula, wb.add_format({'num_format': number_format}))
 
 ######################## Diff percentage (UL)
 # Columns Q to T percentage formulas
-ws.write_formula(2, 16, '=IFERROR(ROUND(M4/I4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-ws.write_formula(2, 17, '=IFERROR(ROUND(N4/J4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-ws.write_formula(2, 18, '=IFERROR(ROUND(O4/K4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-ws.write_formula(2, 19, '=IFERROR(ROUND(P4/L4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+ws.write_formula(2, 16, '=IFERROR(ROUND(M4/I4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+ws.write_formula(2, 17, '=IFERROR(ROUND(N4/J4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+ws.write_formula(2, 18, '=IFERROR(ROUND(O4/K4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+ws.write_formula(2, 19, '=IFERROR(ROUND(P4/L4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
 
 # Merge the percentage cells
-ws.merge_range(2, 16, 3, 16, '=IFERROR(ROUND(M4/I4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-ws.merge_range(2, 17, 3, 17, '=IFERROR(ROUND(N4/J4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-ws.merge_range(2, 18, 3, 18, '=IFERROR(ROUND(O4/K4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-ws.merge_range(2, 19, 3, 19, '=IFERROR(ROUND(P4/L4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+ws.merge_range(2, 16, 3, 16, '=IFERROR(ROUND(M4/I4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+ws.merge_range(2, 17, 3, 17, '=IFERROR(ROUND(N4/J4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+ws.merge_range(2, 18, 3, 18, '=IFERROR(ROUND(O4/K4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+ws.merge_range(2, 19, 3, 19, '=IFERROR(ROUND(P4/L4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
 
 ######################## Lookup table (UL)
-merged_data = UL.merged  # Use the merged data instead of previous calculations
 for x in range(len(merged_data)):
     for c, item in enumerate(merged_data.iloc[x]):
         if c < 15:  # First 15 columns
             ws.write(10 + x, c + 1, item, wb.add_format({'num_format': number_format}))
 
-# Add formulas for columns M to P (difference calculations)
-for row in range(len(merged_data)):
-    ws.write_formula(10 + row, 12, f'=E{11+row}-I{11+row}', wb.add_format({'num_format': number_format}))  # M
-    ws.write_formula(10 + row, 13, f'=F{11+row}-J{11+row}', wb.add_format({'num_format': number_format}))  # N
-    ws.write_formula(10 + row, 14, f'=G{11+row}-K{11+row}', wb.add_format({'num_format': number_format}))  # O
-    ws.write_formula(10 + row, 15, f'=H{11+row}-L{11+row}', wb.add_format({'num_format': number_format}))  # P
+for r in range(11, 11 + len(merged_data)):
+    ws.write_formula(f'M{r}', f'=E{r}-I{r}', wb.add_format({'num_format': number_format}))
+    ws.write_formula(f'N{r}', f'=F{r}-J{r}', wb.add_format({'num_format': number_format}))
+    ws.write_formula(f'O{r}', f'=G{r}-K{r}', wb.add_format({'num_format': number_format}))
+    ws.write_formula(f'P{r}', f'=H{r}-L{r}', wb.add_format({'num_format': number_format}))
 
-# Add formulas for columns Q to T (percentage calculations)
-for row in range(len(merged_data)):
-    ws.write_formula(10 + row, 16, f'=IFERROR(M{11+row}/I{11+row},0)', wb.add_format({'num_format': percentage_format}))  # Q
-    ws.write_formula(10 + row, 17, f'=IFERROR(N{11+row}/J{11+row},0)', wb.add_format({'num_format': percentage_format}))  # R
-    ws.write_formula(10 + row, 18, f'=IFERROR(O{11+row}/K{11+row},0)', wb.add_format({'num_format': percentage_format}))  # S
-    ws.write_formula(10 + row, 19, f'=IFERROR(P{11+row}/L{11+row},0)', wb.add_format({'num_format': percentage_format}))  # T
+    ws.write_formula(f'Q{r}', f'=IFERROR(M{r}/I{r},0)', wb.add_format({'num_format': percentage_format}))
+    ws.write_formula(f'R{r}', f'=IFERROR(N{r}/J{r},0)', wb.add_format({'num_format': percentage_format}))
+    ws.write_formula(f'S{r}', f'=IFERROR(O{r}/K{r},0)', wb.add_format({'num_format': percentage_format}))
+    ws.write_formula(f'T{r}', f'=IFERROR(P{r}/L{r},0)', wb.add_format({'num_format': percentage_format}))
+
 
 ws.conditional_format('Q11:T999', {
     'type':     'cell',
-    'criteria': '>',
-    'value':    0.02,
+    'criteria': '!=',
+    'value':    0,
     'format':   wb.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'}),
 })
 
 # Summary Checking AZTRAD SUMMARY SHEET
 wtrad = wb.add_worksheet('Summary_Checking_TRAD')
-
+merged_trad_data = trad.merged 
+trad_last_row = 10 + len(merged_trad_data)
 wtrad.freeze_panes(10, 4)
 
 headers_summary = ['Items', 'Total Input from csv', 'Total output in summary', 'Diff', 'AZTRAD']
@@ -274,11 +278,17 @@ clean_trad_stat_raw.append(0)
 for c, item in enumerate(clean_trad_stat_raw):
     wtrad.write(2, c + 4 * 2, item, wb.add_format({'num_format': number_format}))
 
+sum_diff_raw = []
+for i in range(len(clean_trad_dv_raw)):
+    sum_diff_raw.append((clean_trad_dv_raw[i] - clean_trad_stat_raw[i]))
+
+for c, item in enumerate(sum_diff_raw):
+    wtrad.write(2, c + 4 * 3, item, wb.add_format({'num_format': number_format}))
 ####################### DATA ENTRY ROW 4 (TRAD) - Replace with Excel formulas
 # Row 4: Sum formulas from E11 to L (columns 4-11)
 for col in range(4, 12):  # E to L (columns 4-11)
     col_letter = chr(ord('A') + col)
-    formula = f'=SUM({col_letter}11:{col_letter}999)'
+    formula = f'=SUM({col_letter}11:{col_letter}{trad_last_row})'
     wtrad.write_formula(3, col, formula, wb.add_format({'num_format': number_format}))
 
 # Columns M to P (12-15): Difference formulas
@@ -287,59 +297,60 @@ wtrad.write_formula(3, 13, '=F4-J4', wb.add_format({'num_format': number_format}
 wtrad.write_formula(3, 14, '=G4-K4', wb.add_format({'num_format': number_format}))  # O4
 wtrad.write_formula(3, 15, '=H4-L4', wb.add_format({'num_format': number_format}))  # P4
 
-######################### Row 6 (TRAD) - Sum formulas with condition for names starting with "C" and containing "WPCI77"
-# For columns E to P, sum where column B contains "C" at start and "WPCI77"
-for col in range(4, 16):  # E to P (columns 4-15)
+for col in range(4, 16):
     col_letter = chr(ord('A') + col)
-    formula = f'=SUMIFS({col_letter}11:{col_letter}999,B11:B999,"C*",B11:B999,"*WPCI77*")'
+    # formula: =E3 - E4 (dst)
+    formula = f'={col_letter}3-{col_letter}4'
+    wtrad.write_formula(4, col, formula, wb.add_format({'num_format': number_format,  'bg_color': '#92D050'}))
+
+# ROW 6: SUMIFS dengan 2 kriteria: mulai "C" dan mengandung "WPCI77"
+for col in range(4, 12):
+    col_letter = chr(ord('A') + col)
+    formula = (
+        f'=SUMIF(B11:B{trad_last_row},"C*",{col_letter}11:{col_letter}{trad_last_row}) + '
+        f'SUMIF(B11:B{trad_last_row},"*WPCI77*",{col_letter}11:{col_letter}{trad_last_row})'
+    )
     wtrad.write_formula(5, col, formula, wb.add_format({'num_format': number_format}))
 
-sum_trad_diff_raw = []
-for i in range(len(clean_trad_dv_raw)):
-    sum_trad_diff_raw.append(clean_trad_dv_raw[i] - clean_trad_stat_raw[i])
-
-for c, item in enumerate(sum_trad_diff_raw):
-    wtrad.write(2, c + 4 * 3, item, wb.add_format({'num_format': number_format}))
+for col in range(12, 16):
+    col_letter = chr(ord('A') + col)
+    formula = f'=SUM({col_letter}11:{col_letter}{trad_last_row})'
+    wtrad.write_formula(5, col, formula, wb.add_format({'num_format': number_format}))
     
 ######################## Diff percentage (TRAD)
 # Columns Q to T percentage formulas - note different row reference for TRAD
-wtrad.write_formula(2, 16, '=IFERROR(ROUND(M6/I4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-wtrad.write_formula(2, 17, '=IFERROR(ROUND(N6/J4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-wtrad.write_formula(2, 18, '=IFERROR(ROUND(O6/K4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-wtrad.write_formula(2, 19, '=IFERROR(ROUND(P6/L4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+wtrad.write_formula(2, 16, '=IFERROR(ROUND(M6/I4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+wtrad.write_formula(2, 17, '=IFERROR(ROUND(N6/J4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+wtrad.write_formula(2, 18, '=IFERROR(ROUND(O6/K4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+wtrad.write_formula(2, 19, '=IFERROR(ROUND(P6/L4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
 
 # Merge the percentage cells
-wtrad.merge_range(2, 16, 3, 16, '=IFERROR(ROUND(M6/I4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-wtrad.merge_range(2, 17, 3, 17, '=IFERROR(ROUND(N6/J4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-wtrad.merge_range(2, 18, 3, 18, '=IFERROR(ROUND(O6/K4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-wtrad.merge_range(2, 19, 3, 19, '=IFERROR(ROUND(P6/L4*100,1),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
-
-################# DIFF ROW
-for x in range(1, len(header_table_notfreezed1)):
-    for y in range(len(header_table_notfreezed1)):
-        unicode = chr(69 + (y + 4 * x) - 4)
-        wtrad.write_formula(4, y + (4 * x), f'={unicode}3-{unicode}4', wb.add_format({'num_format': number_format,  'bg_color': '#92D050'}))
+wtrad.merge_range(2, 16, 3, 16, '=IFERROR(ROUND(M6/I4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+wtrad.merge_range(2, 17, 3, 17, '=IFERROR(ROUND(N6/J4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+wtrad.merge_range(2, 18, 3, 18, '=IFERROR(ROUND(O6/K4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
+wtrad.merge_range(2, 19, 3, 19, '=IFERROR(ROUND(P6/L4,3),0)', wb.add_format({'num_format': percentage_format, 'bg_color': 'yellow', 'bold': True}))
     
 ################# LOOKUP TABLE (TRAD)
-merged_trad_data = trad.merged  # Use the merged data from trad module
 for x in range(len(merged_trad_data)):
     for c, item in enumerate(merged_trad_data.iloc[x]):
         if c < 15:  # First 15 columns
             wtrad.write(10 + x, c + 1, item, wb.add_format({'num_format': number_format}))
 
-# Add formulas for columns M to P (difference calculations with lookups)
-for row in range(len(merged_trad_data)):
-    # M11 = E11-I11
-    wtrad.write_formula(10 + row, 12, f'=E{11+row}-I{11+row}', wb.add_format({'num_format': number_format}))
-    
-    # N11 = F11-J11 - lookup from SUMMARY_CAMPAIGN sheet
-    wtrad.write_formula(10 + row, 13, f'=F{11+row}-J{11+row}-IFERROR(INDEX(SUMMARY_CAMPAIGN.H:H,MATCH(D{11+row},SUMMARY_CAMPAIGN.B:B,0)),0)', wb.add_format({'num_format': number_format}))
-    
-    # O11 = G11-K11 + lookup from Summary BSI sheet
-    wtrad.write_formula(10 + row, 14, f'=G{11+row}-K{11+row}+IFERROR(INDEX(\'Summary BSI\'.C:C,MATCH(D{11+row},\'Summary BSI\'.A:A,0)),0)', wb.add_format({'num_format': number_format}))
-    
-    # P11 = H11-L11
-    wtrad.write_formula(10 + row, 15, f'=H{11+row}-L{11+row}', wb.add_format({'num_format': number_format}))
+for r in range(11, 11 + len(merged_trad_data)):
+    wtrad.write_formula(f'M{r}', f'=E{r}-I{r}', wb.add_format({'num_format': number_format}))
+    wtrad.write_formula(f'N{r}', f'=F{r}-J{r}-IFERROR(INDEX(SUMMARY_CAMPAIGN!G$3:G$1048576, MATCH(D{r}, SUMMARY_CAMPAIGN!D$3:D$1048576, 0)), 0)', wb.add_format({'num_format': number_format}))
+    wtrad.write_formula(
+        f'O{r}',
+        f'=G{r}-K{r}+IFERROR(INDEX(\'Summary BSI\'!C2:C999, MATCH(D{r}, \'Summary BSI\'!B2:B999, 0)), 0)',
+        wb.add_format({'num_format': number_format})
+    )
+    wtrad.write_formula(f'P{r}', f'=H{r}-L{r}', wb.add_format({'num_format': number_format}))
+
+    wtrad.write_formula(f'R{r}', f'=IFERROR(N{r}/J{r},0)', wb.add_format({'num_format': percentage_format}))
+    wtrad.write_formula(f'Q{r}', f'=IFERROR(M{r}/I{r},0)', wb.add_format({'num_format': percentage_format}))
+    wtrad.write_formula(f'S{r}', f'=IFERROR(O{r}/K{r},0)', wb.add_format({'num_format': percentage_format}))
+    wtrad.write_formula(f'T{r}', f'=IFERROR(P{r}/L{r},0)', wb.add_format({'num_format': percentage_format}))
+
 
 # Add formulas for columns Q to T (percentage calculations)
 for row in range(len(merged_trad_data)):
@@ -350,8 +361,8 @@ for row in range(len(merged_trad_data)):
 
 wtrad.conditional_format('Q11:T999', {
     'type':     'cell',
-    'criteria': '>',
-    'value':    0.02,
+    'criteria': '!=',
+    'value':    0,
     'format':   wb.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'}),
 })
 
@@ -426,39 +437,48 @@ for row, group in enumerate(groupings):
 # UL_IDR row (row 4) - formulas to sum from Summary_Checking_UL where column D contains IDR
 for col in range(2, 10):  # Columns C to J (2 to 9)
     col_letter_source = chr(ord('A') + col + 2)  # Maps to E, F, G, etc. in source sheet
-    formula = f'=SUMIF(Summary_Checking_UL.D:D,"*IDR*",Summary_Checking_UL.{col_letter_source}:{col_letter_source})'
+    formula = f'=SUMIF(Summary_Checking_UL!D:D,"*IDR*",Summary_Checking_UL!{col_letter_source}:{col_letter_source})'
     wsum.write_formula(3, col, formula, wb.add_format({'num_format': number_format}))
 
 # UL_USD row (row 5) - formulas to sum from Summary_Checking_UL where column D contains USD
 for col in range(2, 10):  # Columns C to J (2 to 9)
     col_letter_source = chr(ord('A') + col + 2)  # Maps to E, F, G, etc. in source sheet
-    formula = f'=SUMIF(Summary_Checking_UL.D:D,"*USD*",Summary_Checking_UL.{col_letter_source}:{col_letter_source})'
+    formula = f'=SUMIF(Summary_Checking_UL!D:D,"*USD*",Summary_Checking_UL!{col_letter_source}:{col_letter_source})'
     wsum.write_formula(4, col, formula, wb.add_format({'num_format': number_format}))
 
 # TRAD_IDR row (row 6) - formulas to sum from Summary_Checking_TRAD where column D contains IDR
 for col in range(2, 10):  # Columns C to J (2 to 9)
     col_letter_source = chr(ord('A') + col + 2)  # Maps to E, F, G, etc. in source sheet
-    formula = f'=SUMIF(Summary_Checking_TRAD.D:D,"*IDR*",Summary_Checking_TRAD.{col_letter_source}:{col_letter_source})'
+    formula = f'=SUMIF(Summary_Checking_TRAD!D:D,"*IDR*",Summary_Checking_TRAD!{col_letter_source}:{col_letter_source})'
     wsum.write_formula(5, col, formula, wb.add_format({'num_format': number_format}))
 
 # TRAD_USD row (row 7) - formulas to sum from Summary_Checking_TRAD where column D contains USD
 for col in range(2, 10):  # Columns C to J (2 to 9)
     col_letter_source = chr(ord('A') + col + 2)  # Maps to E, F, G, etc. in source sheet
-    formula = f'=SUMIF(Summary_Checking_TRAD.D:D,"*USD*",Summary_Checking_TRAD.{col_letter_source}:{col_letter_source})'
+    formula = f'=SUMIF(Summary_Checking_TRAD!D:D,"*USD*",Summary_Checking_TRAD!{col_letter_source}:{col_letter_source})'
     wsum.write_formula(6, col, formula, wb.add_format({'num_format': number_format}))
+
+last_row = 7
+
+for row in range(4, last_row + 1):  # Excel rows dimulai dari 1
+    wsum.write_formula(f'K{row}', f'=C{row}-G{row}', wb.add_format({'num_format': number_format}))
+    wsum.write_formula(f'L{row}', f'=D{row}-H{row}', wb.add_format({'num_format': number_format}))
+    wsum.write_formula(f'M{row}', f'=E{row}-I{row}', wb.add_format({'num_format': number_format}))
+    wsum.write_formula(f'N{row}', f'=F{row}-J{row}', wb.add_format({'num_format': number_format}))
+
 
 # Add percentage formulas for columns O to R (14 to 17)
 for row in range(4):  # 4 rows of data
     for col in range(4):  # 4 columns of percentages
-        source_col = chr(ord('C') + col + 4)  # G, H, I, J
-        base_col = chr(ord('C') + col)  # C, D, E, F
-        formula = f'=IFERROR(ABS({source_col}{4+row}/{base_col}{4+row}),0)'
-        wsum.write_formula(3 + row, 14 + col, formula, wb.add_format({'num_format': '0.0'}))
+        source_col = chr(ord('C') + col + 8)  
+        base_col = chr(ord('C') + col + 4)  
+        formula = f'=IFERROR(ROUND({source_col}{4+row}/{base_col}{4+row},3),0)'
+        wsum.write_formula(3 + row, 14 + col, formula, wb.add_format({'num_format': percentage_format}))
  
 wsum.conditional_format('O4:R999', {
     'type':     'cell',
-    'criteria': '>',
-    'value':    0.02,
+    'criteria': '!=',
+    'value':    0,
     'format':   wb.add_format({'bg_color': '#FFC7CE', 'font_color': '#9C0006'}),
 })
 
