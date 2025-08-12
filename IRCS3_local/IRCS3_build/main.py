@@ -64,21 +64,14 @@ def normalize_filter_params(params):
     return {k.lower(): v for k, v in params.items()}
 
 def read_filter_config(excel_path, sheet_name):
-    try:
-        df = pd.read_excel(excel_path, sheet_name=sheet_name, engine='openpyxl')
-        if df.empty:
-            return []
-        df.columns = df.columns.str.lower()
-        configs = []
-        for _, row in df.iterrows():
-            config = {}
-            for col in df.columns:
-                config[col] = row[col] if pd.notna(row[col]) else ''
-            configs.append(config)
-        return configs
-    except Exception as e:
-        print(f"Error reading {sheet_name}: {str(e)}")
-        return []
+    import pandas as pd
+    df = pd.read_excel(excel_path, sheet_name=sheet_name, dtype=str)
+    df = df.fillna('') 
+    df.columns = df.columns.str.strip()
+    for col in df.columns:
+        df[col] = df[col].astype(str).str.strip()
+        df[col] = df[col].str.replace(r'\.0$', '', regex=True)
+    return df.to_dict(orient='records')
 
 def get_valuation_info_and_filters(excel_path):
     try:
@@ -131,6 +124,7 @@ def run_single_config(config, product_type):
             return run_name, {"error": f"Unknown product type: {product_type}"}
     except Exception as e:
         return run_name, {"error": f"Error running {product_type} config: {str(e)}"}
+
 
 def run_all_configurations(excel_path):
     print("="*60)
