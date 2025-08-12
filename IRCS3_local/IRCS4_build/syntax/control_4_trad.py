@@ -48,19 +48,23 @@ global_filter_uvsg = None
 
 def process_argo_file(file_path):
     file_name_argo = os.path.splitext(os.path.basename(file_path))[0]
-    wb = load_workbook(file_path, read_only=True, data_only=True)
-    sheet = wb['Sheet1']
-    rows = sheet.iter_rows(values_only=True)
-    header = next(rows)
-    col_index = {col: i for i, col in enumerate(header) if col in columns_to_sum_argo}
-    sums = {col: 0 for col in col_index}
-    for row in rows:
-        for col, idx in col_index.items():
-            if idx < len(row):
-                val = row[idx]
-                if isinstance(val, (int, float)):
-                    sums[col] += val
-    wb.close()
+    try:
+        wb = load_workbook(file_path, read_only=True, data_only=True)
+        sheet = wb['Sheet1']
+        rows = sheet.iter_rows(values_only=True)
+        header = next(rows)
+        col_index = {col: i for i, col in enumerate(header) if col in columns_to_sum_argo}
+        sums = {col: 0 for col in col_index}
+        for row in rows:
+            for col, idx in col_index.items():
+                if idx < len(row):
+                    val = row[idx]
+                    if isinstance(val, (int, float)):
+                        sums[col] += val
+        wb.close()
+    except Exception as e:
+        print(f"❌ Gagal proses {file_name_argo}: {e}")
+        sums = {}
     sums['File_Name'] = file_name_argo
     return sums
 
@@ -268,8 +272,11 @@ def main(params):
     with ProcessPoolExecutor() as executor:
         summary_rows_argo = list(executor.map(process_argo_file, file_paths_argo))
     cf_argo = pd.DataFrame(summary_rows_argo)
-    cols = ['File_Name'] + [col for col in cf_argo.columns if col != 'File_Name']
-    cf_argo = cf_argo[cols]
+    if 'File_Name' in cf_argo.columns:
+        cols = ['File_Name'] + [col for col in cf_argo.columns if col != 'File_Name']
+        cf_argo = cf_argo[cols]
+    else:
+        print("⚠️ There is no 'FILE_NAME' on argo (empty files)")
     cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name'})
     cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
     
@@ -362,7 +369,7 @@ def main(params):
             keyword = rafm_value.split('SUM_')[-1]
 
             pattern = re.escape(keyword).replace("-", "[-_]?")
-            matched_rows = cf_rafm_merge[cf_rafm_merge['ARGO File Name'].fillna('').str.contains(pattern, case=False, regex=True)]
+            matched_rows = cf_rafm_merge[cf_rafm_merge['ARGO File Name'].str.contains(pattern, case=False, regex=True, na=False)]
 
             total_values = matched_rows[numeric_cols].sum()
 

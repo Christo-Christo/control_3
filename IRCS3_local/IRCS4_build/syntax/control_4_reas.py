@@ -207,7 +207,7 @@ def main(params):
             keyword = rafm_value.split('SUM_')[-1]
 
             pattern = re.escape(keyword).replace("-", "[-_]?")
-            matched_rows = cf_rafm_merge[cf_rafm_merge['ARGO File Name'].fillna('').str.contains(pattern, case=False, regex=True)]
+            matched_rows = cf_rafm_merge[cf_rafm_merge['ARGO File Name'].str.contains(pattern, case=False, regex=True, na=False)]
 
             total_values = matched_rows[numeric_cols].sum()
 

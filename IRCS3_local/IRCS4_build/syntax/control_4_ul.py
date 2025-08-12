@@ -239,7 +239,7 @@ def main(params):
     for idx, row in sum_rows.iterrows():
         keyword = row['RAFM File Name'].split('SUM_')[-1]
         pattern = re.escape(keyword).replace("-", "[-_]?")
-        matched = cf_rafm_merge[cf_rafm_merge['ARGO File Name'].fillna('').str.contains(pattern, case=False, regex=True)]
+        matched = cf_rafm_merge[cf_rafm_merge['ARGO File Name'].str.contains(pattern, case=False, regex=True, na=False)]
         totals = matched[numeric_cols].sum()
         for col in numeric_cols:
             cf_rafm_merge.at[idx, col] = totals[col]
