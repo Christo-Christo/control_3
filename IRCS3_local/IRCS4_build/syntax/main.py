@@ -71,26 +71,28 @@ def process_input_file(file_path):
             workbook = writer.book
             worksheet = writer.sheets[sheet_name]
 
-            format_accounting = workbook.add_format({
-                'num_format': '_-* #,##0_-;_-* (#,##0);_-* "-"_-;_-@_-'
-            })
-            format_int = workbook.add_format({'num_format': '0'})
-            format_no_format = workbook.add_format() 
+            # Skip formatting for 'Control' sheet
+            if sheet_name != 'Control':
+                format_accounting = workbook.add_format({
+                    'num_format': '_-* #,##0_-;_-* (#,##0);_-* "-"_-;_-@_-'
+                })
+                format_int = workbook.add_format({'num_format': '0'})
+                format_no_format = workbook.add_format() 
 
-            if hasattr(df_sheet, 'columns'):
-                for col_idx, col_name in enumerate(df_sheet.columns):
-                    col_name_lower = str(col_name).lower()
-                    if ('include year' in col_name_lower or 
-                        'exclude year' in col_name_lower or 
-                        'speed duration' in col_name_lower):
-                        if 'speed duration' in col_name_lower:
-                            worksheet.set_column(col_idx, col_idx, None, format_no_format)
+                if hasattr(df_sheet, 'columns'):
+                    for col_idx, col_name in enumerate(df_sheet.columns):
+                        col_name_lower = str(col_name).lower()
+                        if ('include year' in col_name_lower or 
+                            'exclude year' in col_name_lower or 
+                            'speed duration' in col_name_lower):
+                            if 'speed duration' in col_name_lower:
+                                worksheet.set_column(col_idx, col_idx, None, format_no_format)
+                            else:
+                                worksheet.set_column(col_idx, col_idx, None, format_int)
                         else:
-                            worksheet.set_column(col_idx, col_idx, None, format_int)
-                    else:
-                        worksheet.set_column(col_idx, col_idx, None, format_accounting)
-            else:
-                worksheet.set_column(0, df_sheet.shape[1] - 1, None, format_accounting)
+                            worksheet.set_column(col_idx, col_idx, None, format_accounting)
+                else:
+                    worksheet.set_column(0, df_sheet.shape[1] - 1, None, format_accounting)
 
             if sheet_name != 'Control':
                 border_format = workbook.add_format({'border': 1, 'border_color': 'black'})
@@ -214,7 +216,7 @@ def process_input_file(file_path):
 
 
     print(f"✅ Output disimpan di: {output_file}")
-    print("📑 Sheet yang diekspor:")
+    print("📋 Sheet yang diekspor:")
     for sheet in result:
         print(f"   - {sheet}")
 
