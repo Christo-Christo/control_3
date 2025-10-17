@@ -50,15 +50,22 @@ global_filter_rafm = None
 global_filter_uvsg = None
 
 def process_argo_file(file_path):
+    """Optimized ARGO file processing"""
     file_name_argo = os.path.splitext(os.path.basename(file_path))[0]
     try:
-        wb = load_workbook(file_path, read_only=True, data_only=True)
+        wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
         sheet = wb['Sheet1']
-        rows = sheet.iter_rows(values_only=True)
-        header = next(rows)
+
+        data = list(sheet.values)
+        if not data:
+            wb.close()
+            return {'File_Name': file_name_argo}
+        
+        header = data[0]
         col_index = {col: i for i, col in enumerate(header) if col in columns_to_sum_argo}
         sums = {col: 0 for col in col_index}
-        for row in rows:
+        
+        for row in data[1:]:
             for col, idx in col_index.items():
                 if idx < len(row):
                     val = row[idx]
@@ -68,9 +75,9 @@ def process_argo_file(file_path):
     except Exception as e:
         print(f"❌ Gagal proses {file_name_argo}: {e}")
         sums = {}
+    
     sums['File_Name'] = file_name_argo
     return sums
-
 
 def try_match_filter(filter_df, file_name):
     base = os.path.splitext(file_name)[0]
@@ -381,12 +388,15 @@ def main(params):
 
     input_excel = params['input excel']
 
-    code = pd.read_excel(input_excel, sheet_name='Code')
-    sign_logic = pd.read_excel(input_excel, sheet_name='Sign Logic')
-    control = pd.read_excel(input_excel, sheet_name='Control')
-    file_path_df = pd.read_excel(input_excel, sheet_name='File Path')
-    global_filter_rafm = pd.read_excel(input_excel, sheet_name='Filter RAFM')
-    global_filter_uvsg = pd.read_excel(input_excel, sheet_name='Filter UVSG')
+    # Read all sheets at once (lebih efisien)
+    excel_file = pd.ExcelFile(input_excel)
+    code = pd.read_excel(excel_file, sheet_name='Code')
+    sign_logic = pd.read_excel(excel_file, sheet_name='Sign Logic')
+    control = pd.read_excel(excel_file, sheet_name='Control')
+    file_path_df = pd.read_excel(excel_file, sheet_name='File Path')
+    global_filter_rafm = pd.read_excel(excel_file, sheet_name='Filter RAFM')
+    global_filter_uvsg = pd.read_excel(excel_file, sheet_name='Filter UVSG')
+    excel_file.close()
 
     path_map = dict(zip(file_path_df['Name'].str.lower(), file_path_df['File Path']))
     folder_path_argo = path_map.get('argo', '')
@@ -395,7 +405,8 @@ def main(params):
     rafm_manual_path = path_map.get('rafm manual', '')
 
     file_paths_argo = [f for f in glob.glob(os.path.join(folder_path_argo, '*.xlsx')) if not os.path.basename(f).startswith('~$')]
-    with ProcessPoolExecutor() as executor:
+    optimal_workers = min(os.cpu_count() or 4, max(len(file_paths_argo), 1))
+    with ProcessPoolExecutor(max_workers=optimal_workers) as executor:
         summary_rows_argo = list(executor.map(process_argo_file, file_paths_argo))
     cf_argo = pd.DataFrame(summary_rows_argo)
     if 'File_Name' in cf_argo.columns:
