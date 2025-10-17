@@ -70,8 +70,17 @@ def process_input_file(file_path):
 
             workbook = writer.book
             worksheet = writer.sheets[sheet_name]
+            if hasattr(df_sheet, 'columns'):
+                for i, col in enumerate(df_sheet.columns):
+                    try:
+                        max_len = max(
+                            df_sheet[col].astype(str).map(len).max(),
+                            len(str(col))
+                        ) + 2
+                    except Exception:
+                        max_len = len(str(col)) + 2
+                    worksheet.set_column(i, i, max_len)
 
-            # Skip formatting for 'Control' sheet
             if sheet_name != 'Control':
                 format_accounting = workbook.add_format({
                     'num_format': '_-* #,##0_-;_-* (#,##0);_-* "-"_-;_-@_-'
@@ -101,7 +110,6 @@ def process_input_file(file_path):
                     0, 0, nrows, ncols - 1,
                     {'type': 'no_errors', 'format': border_format}
                 )
-
             if sheet_name.lower().startswith("checking summary"):
                 nrows, ncols = df_sheet.shape
                 nomor_kolom = df_sheet.iloc[:, 0]
@@ -142,9 +150,9 @@ def process_input_file(file_path):
 
                             formula = (
                                 f"=IFERROR(INDEX('{cf_sheet}'!$C$2:${max_col_cf}${max_row_cf}, MATCH({row_b}, '{cf_sheet}'!$B$2:$B${max_row_cf}, 0), MATCH({col_header}, '{cf_sheet}'!$C$1:${max_col_cf}$1, 0)),0)"
-                                f"-IFERROR(INDEX('{rafm_sheet_1}'!$C$2:${max_col_rafm1}${max_row_rafm1}, MATCH({row_c}, '{rafm_sheet_1}'!$B$2:$B${max_row_rafm1}, 0), MATCH({col_header}, '{rafm_sheet_1}'!$C$1:${max_col_rafm1}$1, 0)),0)"
+                                f"-IFERROR(INDEX('{rafm_sheet_1}'!$G$2:${max_col_rafm1}${max_row_rafm1}, MATCH({row_c}, '{rafm_sheet_1}'!$B$2:$B${max_row_rafm1}, 0), MATCH({col_header}, '{rafm_sheet_1}'!$G$1:${max_col_rafm1}$1, 0)),0)"
                                 f"+IFERROR(INDEX('{manual_sheet}'!$C$2:${max_col_manual}${max_row_manual}, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0)),0)"
-                                f"-IFERROR(INDEX('{rafm_sheet_2}'!$C$2:${max_col_rafm2}${max_row_rafm2}, MATCH({row_d}, '{rafm_sheet_2}'!$B$2:$B${max_row_rafm2}, 0), MATCH({col_header}, '{rafm_sheet_2}'!$C$1:${max_col_rafm2}$1, 0)),0)"
+                                f"-IFERROR(INDEX('{rafm_sheet_2}'!$G$2:${max_col_rafm2}${max_row_rafm2}, MATCH({row_d}, '{rafm_sheet_2}'!$B$2:$B${max_row_rafm2}, 0), MATCH({col_header}, '{rafm_sheet_2}'!$G$1:${max_col_rafm2}$1, 0)),0)"
                             )
                             worksheet.write_formula(row_idx, col_idx, formula)
 
@@ -213,7 +221,84 @@ def process_input_file(file_path):
                                 f"-IFERROR(INDEX('{manual_sheet}'!$C$2:${max_col_manual}${max_row_manual}, MATCH({row_c}, '{manual_sheet}'!$B$2:$B${max_row_manual}, 0), MATCH({col_header}, '{manual_sheet}'!$C$1:${max_col_manual}$1, 0)),0)"
                             )
                             worksheet.write_formula(row_idx, col_idx, formula)
+        if 'RAFM Output AZTRAD' in result and jenis == 'trad':
+            rafm_sheet_name = 'RAFM Output AZTRAD'
+            worksheet = writer.sheets[rafm_sheet_name]
+            rafm_df = result[rafm_sheet_name]
 
+            start_col_idx = 6
+            nrows, ncols = rafm_df.shape
+
+            names = rafm_df.iloc[:, 1].astype(str)
+
+            runs = ["Data_Extraction_run11TRAD", "Data_Extraction_run21TRAD",
+                    "Data_Extraction_run31TRAD", "Data_Extraction_run41TRAD"]
+
+            for row_idx in range(nrows):
+                current_name = names.iloc[row_idx]
+                for i, run_name in enumerate(runs):
+                    if current_name.startswith(run_name) and not current_name.endswith('_ori'):
+                        ori_names = [f"{r}*_ori" for r in runs[:i+1]]
+                        formula_parts = []
+                        for ori in ori_names:
+                            formula_parts.append(
+                                f"IFERROR(INDEX($G$2:${xl_col_to_name(ncols-1)}${nrows+1}, MATCH(\"{ori}\",$B$2:$B${nrows+1},0), COLUMN()-COLUMN($G$1)+1),0)"
+                            )
+                        formula = "= " + " + ".join(formula_parts)
+                        for col_idx in range(start_col_idx, ncols):
+                            worksheet.write_formula(row_idx+1, col_idx, formula)
+        if 'RAFM Output AZUL' in result and jenis == 'ul':
+            rafm_sheet_name = 'RAFM Output AZUL'
+            worksheet = writer.sheets[rafm_sheet_name]
+            rafm_df = result[rafm_sheet_name]
+
+            start_col_idx = 5
+            nrows, ncols = rafm_df.shape
+
+            names = rafm_df.iloc[:, 1].astype(str)
+
+            runs = ["Data_Extraction_run11UL", "Data_Extraction_run21UL",
+                    "Data_Extraction_run31UL", "Data_Extraction_run41UL"]
+
+            for row_idx in range(nrows):
+                current_name = names.iloc[row_idx]
+                for i, run_name in enumerate(runs):
+                    if current_name.startswith(run_name) and not current_name.endswith('_ori'):
+                        ori_names = [f"{r}*_ori" for r in runs[:i+1]]
+                        formula_parts = []
+                        for ori in ori_names:
+                            formula_parts.append(
+                                f"IFERROR(INDEX($F$2:${xl_col_to_name(ncols-1)}${nrows+1}, MATCH(\"{ori}\",$B$2:$B${nrows+1},0), COLUMN()-COLUMN($F$1)+1),0)"
+                            )
+                        formula = "= " + " + ".join(formula_parts)
+                        for col_idx in range(start_col_idx, ncols):
+                            worksheet.write_formula(row_idx+1, col_idx, formula)
+        if 'RAFM Output REAS' in result and jenis == 'reas':
+            rafm_sheet_name = 'RAFM Output REAS'
+            worksheet = writer.sheets[rafm_sheet_name]
+            rafm_df = result[rafm_sheet_name]
+
+            start_col_idx = 2
+            nrows, ncols = rafm_df.shape
+
+            names = rafm_df.iloc[:, 1].astype(str)
+
+            runs = ["run11", "run21",
+                    "run31", "run41"]
+
+            for row_idx in range(nrows):
+                current_name = names.iloc[row_idx]
+                for i, run_name in enumerate(runs):
+                    if current_name.startswith(run_name) and not current_name.endswith('_ori'):
+                        ori_names = [f"{r}*_ori" for r in runs[:i+1]]
+                        formula_parts = []
+                        for ori in ori_names:
+                            formula_parts.append(
+                                f"IFERROR(INDEX($C$2:${xl_col_to_name(ncols-1)}${nrows+1}, MATCH(\"{ori}\",$B$2:$B${nrows+1},0), COLUMN()-COLUMN($C$1)+1),0)"
+                            )
+                        formula = "= " + " + ".join(formula_parts)
+                        for col_idx in range(start_col_idx, ncols):
+                            worksheet.write_formula(row_idx+1, col_idx, formula)
 
     print(f"✅ Output disimpan di: {output_file}")
     print("📋 Sheet yang diekspor:")

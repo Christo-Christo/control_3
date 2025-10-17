@@ -4,8 +4,9 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 import re
 from openpyxl import load_workbook
+from itertools import zip_longest
+import traceback
 
-############################## ARGO ###############################
 
 columns_to_sum_argo = [
     'prm_inc','lrc_cl_ins','lrc_cl_inv','r_exp_m','r_acq_cost',
@@ -37,8 +38,10 @@ cols_to_compare = [
     'lrc_cl_inv_ann'
 ]
 
-additional_columns = ['cov_units','c_sar', 'pv_r_exp_m', 'pv_surr']
-additional_columns_uvsg = ['cov_units','u_sar', 'pv_r_exp_m', 'pv_surr']
+additional_columns = ['cov_units', 'pv_r_exp_m', 'pv_surr']
+c_sar = ['c_sar']
+additional_columns_uvsg = ['cov_units', 'pv_r_exp_m', 'pv_surr']
+u_sar = ['u_sar']
 target_sheets = ['extraction_IDR', 'extraction_USD']
 summary_rows_argo = []
 summary_rows_rafm = []
@@ -68,186 +71,309 @@ def process_argo_file(file_path):
     sums['File_Name'] = file_name_argo
     return sums
 
+
+def try_match_filter(filter_df, file_name):
+    base = os.path.splitext(file_name)[0]
+    candidates = [
+        file_name,
+        base,
+        file_name.lower(),
+        base.lower(),
+        base.replace('_',' ').lower(),
+        base.replace(' ','_').lower()
+    ]
+    for c in candidates:
+        m = filter_df[filter_df['File Name'].str.lower() == str(c).lower()]
+        if not m.empty:
+            return m
+    for c in candidates:
+        m = filter_df[filter_df['File Name'].str.lower().str.contains(str(c).lower(), na=False)]
+        if not m.empty:
+            return m
+    return filter_df[filter_df['File Name'] == file_name]
+
+def parse_numeric(val):
+    if val is None:
+        raise ValueError("None")
+    s = str(val).strip()
+    if s == '':
+        raise ValueError("empty")
+    s = s.replace('\xa0','').replace(' ', '')
+    is_percent = s.endswith('%')
+    if is_percent:
+        s = s[:-1]
+    if re.match(r'^\(.*\)$', s):
+        s = '-' + s.strip('()')
+    s = s.replace(',', '')
+    s = re.sub(r'[^\d\.\-eE]', '', s)
+    valf = float(s)
+    if is_percent:
+        valf = valf / 100.0
+    return valf
+
 def process_rafm_file(args):
     file_path, file_name, filter_df = args
-    match = filter_df[filter_df['File Name'] == file_name]
-    if match.empty:
-        return None
+    try:
+        match = try_match_filter(filter_df, file_name)
+        if match.empty:
+            print(f"⚠️ Filter match empty for RAFM file: {file_name}")
+            return None
 
-    total_sums = {col: 0 for col in columns_to_sum_rafm}
-    additional_sums = {col: 0 for col in additional_columns}
+        total_sums = {col: 0.0 for col in columns_to_sum_rafm}
+        additional_sums = {col: 0.0 for col in additional_columns}
+        csar_columns = {col: 0.0 for col in c_sar}
 
-    speed = int(match['Speed Duration'].values[0])
-    exclude = str(match['Exclude Year'].values[0])
-    include = str(match['Include Year'].values[0])
+        speed = int(match['Speed Duration'].values[0])
+        exclude = str(match['Exclude Year'].values[0])
+        include = str(match['Include Year'].values[0])
+        sar = int(match['C_sar'].values[0])
 
-    for sheet_name in target_sheets:
-        try:
-            wb = load_workbook(file_path, read_only=True, data_only=True)
-            if sheet_name not in wb.sheetnames:
-                wb.close()
-                continue
-            actual_sheetnames = [s.strip().lower() for s in wb.sheetnames]
-            target_lower = sheet_name.lower()
-
-            if target_lower not in actual_sheetnames:
-                wb.close()
-                continue
-            matched_sheet = wb.sheetnames[actual_sheetnames.index(target_lower)]
-            sheet = wb[matched_sheet]
-            rows = sheet.iter_rows(values_only=True)
-            header = next(rows)
-
-            col_index = {}
-            for i, col in enumerate(header):
-                col_name = str(col).strip().lower() if col else ''
-                if col_name in [c.lower() for c in columns_to_sum_rafm + additional_columns] or col_name == 'goc':
-                    col_index[col_name] = i
-
-            if 'goc' not in col_index:
-                continue
-
-            for row in rows:
-                val_goc = str(row[col_index['goc']]) if col_index['goc'] < len(row) else ''
-                period_idx = col_index.get('period')
-                period_value = row[period_idx] if period_idx is not None and period_idx < len(row) else None
-
-                skip_row = False
-                if include != '-' and exclude != '-':
-                    if include not in val_goc or exclude in val_goc:
-                        skip_row = True
-                elif include != '-':
-                    if include not in val_goc:
-                        skip_row = True
-                elif exclude != '-':
-                    if exclude in val_goc:
-                        skip_row = True
-
-                if skip_row:
+        wb = load_workbook(file_path, read_only=True, data_only=True)
+        for sheet_name in target_sheets:
+            try:
+                if sheet_name not in wb.sheetnames and sheet_name.lower() not in [s.lower().strip() for s in wb.sheetnames]:
+                    continue
+                actual_sheetnames = [s.strip() for s in wb.sheetnames]
+                matched_sheet = None
+                for s in actual_sheetnames:
+                    if s.lower().strip() == sheet_name.lower().strip():
+                        matched_sheet = s
+                        break
+                if matched_sheet is None:
                     continue
 
-                if period_value is not None and period_value > speed:
-                    for col in columns_to_sum_rafm:
-                        idx = col_index.get(col.lower())
-                        if idx is not None and idx < len(row):
-                            val = row[idx]
-                            if isinstance(val, (int, float)) and val != 0:
-                                total_sums[col] += val
+                sheet = wb[matched_sheet]
+                rows = sheet.iter_rows(values_only=True)
+                try:
+                    header = next(rows)
+                except StopIteration:
+                    continue
+                expected = [c.lower() for c in columns_to_sum_rafm + additional_columns + c_sar]
+                col_index = {}
+                for i, col in enumerate(header):
+                    col_name = str(col).strip().lower() if col is not None else ''
+                    if col_name in expected or col_name == 'goc' or col_name == 'period':
+                        col_index[col_name] = i
 
-                if period_value is not None and period_value >= 0:
-                    for col in additional_columns:
-                        idx = col_index.get(col.lower())
-                        if idx is not None and idx < len(row):
-                            val = row[idx]
-                            if isinstance(val, (int, float)) and val != 0:
-                                additional_sums[col] += val
-            wb.close()
+                if 'goc' not in col_index:
+                    continue
 
-        except:
-            continue
+                for row in rows:
+                    val_goc = ''
+                    try:
+                        idx_goc = col_index.get('goc')
+                        if idx_goc is not None and idx_goc < len(row):
+                            val_goc = str(row[idx_goc]) if row[idx_goc] is not None else ''
+                    except Exception:
+                        val_goc = ''
 
-    total_sums['File_Name'] = file_name
-    additional_sums['File_Name'] = file_name
-    return total_sums, additional_sums
+                    period_idx = col_index.get('period')
+                    period_value = None
+                    if period_idx is not None and period_idx < len(row):
+                        period_raw = row[period_idx]
+                        try:
+                            period_value = int(period_raw)
+                        except Exception:
+                            try:
+                                period_value = int(float(str(period_raw).replace(',','').strip()))
+                            except Exception:
+                                period_value = None
+
+                    skip_row = False
+                    if include != '-' and exclude != '-':
+                        if include not in val_goc or exclude in val_goc:
+                            skip_row = True
+                    elif include != '-':
+                        if include not in val_goc:
+                            skip_row = True
+                    elif exclude != '-':
+                        if exclude in val_goc:
+                            skip_row = True
+                    if skip_row:
+                        continue
+
+                    if period_value is not None and period_value > speed:
+                        for col in columns_to_sum_rafm:
+                            idx = col_index.get(col.lower())
+                            if idx is not None and idx < len(row):
+                                raw = row[idx]
+                                try:
+                                    v = parse_numeric(raw)
+                                except Exception:
+                                    continue
+                                if v != 0:
+                                    total_sums[col] += v
+
+                    if period_value is not None and period_value >= 0:
+                        for col in additional_columns:
+                            idx = col_index.get(col.lower())
+                            if idx is not None and idx < len(row):
+                                raw = row[idx]
+                                try:
+                                    v = parse_numeric(raw)
+                                except Exception:
+                                    continue
+                                if v != 0:
+                                    additional_sums[col] += v
+
+                    if period_value is not None and period_value >= sar:
+                        for col in c_sar:
+                            idx = col_index.get(col.lower())
+                            if idx is not None and idx < len(row):
+                                raw = row[idx]
+                                try:
+                                    v = parse_numeric(raw)
+                                except Exception:
+                                    continue
+                                if v != 0:
+                                    csar_columns[col] += v
+
+            except Exception:
+                print(f"Error processing sheet {sheet_name} in file {file_name}:")
+                traceback.print_exc()
+                continue
+
+        wb.close()
+        total_sums['File_Name'] = file_name
+        additional_sums['File_Name'] = file_name
+        csar_columns['File_Name'] = file_name
+
+        return total_sums, additional_sums, csar_columns
+
+    except Exception:
+        print(f"Fatal error in processing file {file_name}:")
+        traceback.print_exc()
+        return None
+
 
 def process_uvsg_file(args):
     file_path, file_name, filter_df = args
 
-    matched_row = filter_df[
-        filter_df['File Name'].astype(str).str.lower().str.strip().str.contains(file_name.lower())
-    ]
-    if matched_row.empty:
-        print(f"⚠️ Tidak ditemukan baris filter UVSG untuk file: {file_name}")
+    match = try_match_filter(filter_df, file_name)
+    if match.empty:
+        print(f"⚠️ File UVSG '{file_name}' tidak berhasil diproses atau hasilnya None.")
         return None
 
-    match = matched_row.iloc[0]
+    match = match.iloc[0]
 
     try:
         speed = int(match['Speed Duration'])
         exclude = str(match['Exclude Year'])
         include = str(match['Include Year'])
+        sar = int(match['C_sar'])
     except Exception as e:
         print(f"❌ Error membaca filter UVSG untuk {file_name}: {e}")
         return None
 
-    total_sums = {col: 0 for col in columns_to_sum_uvsg}
-    additional_sums = {col: 0 for col in additional_columns_uvsg}
+    total_sums = {col: 0.0 for col in columns_to_sum_uvsg}
+    additional_sums = {col: 0.0 for col in additional_columns_uvsg}
+    usar_columns = {col: 0.0 for col in u_sar}
 
-    for sheet_name in target_sheets:
-        try:
-            wb = load_workbook(file_path, read_only=True, data_only=True)
-            if sheet_name not in wb.sheetnames:
-                wb.close()
-                continue
-
-            actual_sheetnames = [s.strip().lower() for s in wb.sheetnames]
-            target_lower = sheet_name.lower()
-            if target_lower not in actual_sheetnames:
-                wb.close()
-                continue
-
-            matched_sheet = wb.sheetnames[actual_sheetnames.index(target_lower)]
-            sheet = wb[matched_sheet]
-            rows = sheet.iter_rows(values_only=True)
-            header = next(rows)
-            header_lower = [str(col).strip().lower() if col else '' for col in header]
-            col_index = {}
-
-            for col in columns_to_sum_uvsg + additional_columns_uvsg + ['GOC']:
-                col_lower = col.lower()
-                if col_lower in header_lower:
-                    col_index[col_lower] = header_lower.index(col_lower)
-
-            if 'goc' not in col_index:
-                wb.close()
-                continue
-
-            for row in rows:
-                if col_index['goc'] >= len(row):
-                    continue
-                val_goc = str(row[col_index['goc']]) if row[col_index['goc']] is not None else ''
-                period_idx = col_index.get('period')
-                period_value = row[period_idx] if period_idx is not None and period_idx < len(row) else None
-
-                skip_row = False
-                if include != '-' and exclude != '-':
-                    if include not in val_goc or exclude in val_goc:
-                        skip_row = True
-                elif include != '-':
-                    if include not in val_goc:
-                        skip_row = True
-                elif exclude != '-':
-                    if exclude in val_goc:
-                        skip_row = True
-                if skip_row:
+    try:
+        wb = load_workbook(file_path, read_only=True, data_only=True)
+        for sheet_name in target_sheets:
+            try:
+                actual_sheets = [s.strip() for s in wb.sheetnames]
+                matched_sheet = None
+                for s in actual_sheets:
+                    if s.lower() == sheet_name.lower().strip():
+                        matched_sheet = s
+                        break
+                if matched_sheet is None:
                     continue
 
-                if isinstance(period_value, (int, float)) and period_value > speed:
-                    for col in columns_to_sum_uvsg:
-                        idx = col_index.get(col.lower())
-                        if idx is not None and idx < len(row):
-                            val = row[idx]
-                            if isinstance(val, (int, float)) and val != 0:
-                                total_sums[col] += val
+                sheet = wb[matched_sheet]
+                rows = sheet.iter_rows(values_only=True)
+                try:
+                    header = next(rows)
+                except StopIteration:
+                    continue
 
-                if isinstance(period_value, (int, float)) and period_value >= 0:
-                    for col in additional_columns_uvsg:
-                        idx = col_index.get(col.lower())
-                        if idx is not None and idx < len(row):
-                            val = row[idx]
-                            if isinstance(val, (int, float)) and val != 0:
-                                additional_sums[col] += val
+                header_lower = [str(h).strip().lower() if h else '' for h in header]
+                col_index = {}
+                for col in columns_to_sum_uvsg + additional_columns_uvsg + u_sar + ['goc', 'period']:
+                    cl = col.lower()
+                    if cl in header_lower:
+                        col_index[cl] = header_lower.index(cl)
 
-            wb.close()
+                if 'goc' not in col_index:
+                    continue
 
-        except Exception as e:
-            print(f"❌ Gagal membaca sheet {sheet_name} untuk file {file_name}: {e}")
-            continue
+                for row in rows:
+                    val_goc = str(row[col_index['goc']]) if col_index['goc'] < len(row) and row[col_index['goc']] is not None else ''
+                    period_idx = col_index.get('period')
+                    period_value = None
+                    if period_idx is not None and period_idx < len(row):
+                        try:
+                            period_value = int(row[period_idx])
+                        except:
+                            try:
+                                period_value = int(float(str(row[period_idx]).replace(',','').strip()))
+                            except:
+                                period_value = None
 
-    total_sums['File_Name'] = file_name
-    additional_sums['File_Name'] = file_name
-    return total_sums, additional_sums
+                    skip_row = False
+                    if include != '-' and exclude != '-':
+                        if include not in val_goc or exclude in val_goc:
+                            skip_row = True
+                    elif include != '-':
+                        if include not in val_goc:
+                            skip_row = True
+                    elif exclude != '-':
+                        if exclude in val_goc:
+                            skip_row = True
+                    if skip_row:
+                        continue
 
+                    # total sums (period > speed)
+                    if period_value is not None and period_value > speed:
+                        for col in columns_to_sum_uvsg:
+                            idx = col_index.get(col.lower())
+                            if idx is not None and idx < len(row):
+                                try:
+                                    v = parse_numeric(row[idx])
+                                except:
+                                    continue
+                                if v != 0:
+                                    total_sums[col] += v
+
+                    # additional sums (period >= 0)
+                    if period_value is not None and period_value >= 0:
+                        for col in additional_columns_uvsg:
+                            idx = col_index.get(col.lower())
+                            if idx is not None and idx < len(row):
+                                try:
+                                    v = parse_numeric(row[idx])
+                                except:
+                                    continue
+                                if v != 0:
+                                    additional_sums[col] += v
+
+                    # usar (period >= sar)
+                    if period_value is not None and period_value >= sar:
+                        for col in u_sar:
+                            idx = col_index.get(col.lower())
+                            if idx is not None and idx < len(row):
+                                try:
+                                    v = parse_numeric(row[idx])
+                                except:
+                                    continue
+                                if v != 0:
+                                    usar_columns[col] += v
+            except Exception:
+                print(f"Error processing sheet {sheet_name} in file {file_name}:")
+                traceback.print_exc()
+                continue
+        wb.close()
+        total_sums['File_Name'] = file_name
+        additional_sums['File_Name'] = file_name
+        usar_columns['File_Name'] = file_name
+
+        return total_sums, additional_sums, usar_columns
+
+    except Exception as e:
+        print(f"❌ Gagal membaca file UVSG {file_name}: {e}")
+        return None
 
 
 def main(params):
@@ -278,6 +404,7 @@ def main(params):
     else:
         print("⚠️ There is no 'FILE_NAME' on argo (empty files)")
     cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name'})
+    code = code[~code['RAFM File Name'].astype(str).str.contains('_ori',regex = True, na = False)]
     cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
     
     # Fixed: Safely drop columns that exist
@@ -299,54 +426,29 @@ def main(params):
         results = list(executor.map(process_rafm_file, file_entries))
     summary_rows_rafm = []
     additional_summary_rows = []
+    csar_summary = []
     for result in results:
         if result:
-            total_sums, additional_sums = result
+            total_sums, additional_sums,csar_columns = result
             summary_rows_rafm.append(total_sums)
             additional_summary_rows.append(additional_sums)
+            csar_summary.append(csar_columns)
 
     combined_summary = []
-    for main_row, add_row in zip(summary_rows_rafm, additional_summary_rows):
-        combined_row = {**main_row, **add_row}
+    for main_row, add_row, csar_row in zip_longest(summary_rows_rafm, additional_summary_rows, csar_summary):
+        combined_row = {**main_row, **add_row, **csar_row}
         combined_summary.append(combined_row)
 
     all_runs = ['11', '21', '31', '41']
-
-    original_data_by_file = {row['File_Name']: row.copy() for row in combined_summary}
-
-    from collections import defaultdict
-    grouped_files = defaultdict(dict)
-
-    for row in combined_summary:
-        file_name = row['File_Name']
-        for run in all_runs:
-            if f"run{run}" in file_name:
-                prefix = file_name.split(f"run{run}")[0]
-                grouped_files[prefix][run] = file_name
-                break 
-
-    for prefix, run_map in grouped_files.items():
-        present_runs = sorted(run_map.keys()) 
-
-        for target_run in present_runs:
-            target_file = run_map[target_run]
-
-
-            runs_to_sum = [r for r in all_runs if r <= target_run and r in run_map]
-
-            total_sum = {col: 0 for col in columns_to_sum_rafm + additional_columns}
-            for run in runs_to_sum:
-                file = run_map[run]
-                data_row = original_data_by_file[file]
-                for col in total_sum:
-                    total_sum[col] += data_row.get(col, 0)
-
-            for i, row in enumerate(combined_summary):
-                if row['File_Name'] == target_file:
-                    for col in total_sum:
-                        combined_summary[i][col] = total_sum[col]
-                    break
-
+    pattern = '|'.join([f'run{r}' for r in all_runs])
+    combined_summary = pd.DataFrame(combined_summary)
+    def add_ori_if_run(x):
+        for r in all_runs:
+            if re.search(fr'run_?{r}', x, re.IGNORECASE):
+                return x + "_ori"
+        return x
+    
+    combined_summary['File_Name'] = combined_summary['File_Name'].apply(add_ori_if_run)
     cf_rafm_1 = pd.DataFrame(combined_summary)
     cols = ['File_Name'] + [col for col in cf_rafm_1.columns if col != 'File_Name']
     cf_rafm_1 = cf_rafm_1[cols]
@@ -356,6 +458,7 @@ def main(params):
         code_rafm = code_rafm.drop(columns=['UVSG File Name'])
     
     cf_rafm = cf_rafm_1.rename(columns={'File_Name': 'RAFM File Name'})
+    run1_ori = cf_rafm[cf_rafm['RAFM File Name'].str.contains(pattern, case=False, na=False)]
     cf_rafm_merge = pd.merge(code_rafm, cf_rafm, on="RAFM File Name", how="left")
     cf_rafm_merge.fillna(0, inplace=True)
 
@@ -385,7 +488,8 @@ def main(params):
         cf_rafm = cf_rafm_merge.drop(columns=columns_to_drop)
     else:
         cf_rafm = cf_rafm_merge.copy()
-    
+    cf_rafm = pd.concat([cf_rafm,run1_ori])
+    cf_rafm = cf_rafm.drop(columns = ['period'])
     cf_rafm['dac_cov_units'] = cf_rafm['cov_units']
     cf_rafm['dac'] = -cf_rafm['r_acq_cost']
     nattr_exp = ['nattr_exp_acq', 'nattr_exp_inv', 'nattr_exp_maint']
@@ -396,6 +500,7 @@ def main(params):
 
     summary_rows_uvsg = []
     additional_summary_rows = []
+    usar_summary_uvsg = []
 
     if file_paths_uvsg:
         try:
@@ -405,10 +510,11 @@ def main(params):
                 results_uvsg = list(executor.map(process_uvsg_file, file_entries))
 
             for entry, result in zip(file_entries, results_uvsg):
-                if isinstance(result, tuple) and len(result) == 2:
-                    total_sums, additional_sums = result
+                if isinstance(result, tuple) and len(result) == 3:
+                    total_sums, additional_sums,usar_columns = result
                     summary_rows_uvsg.append(total_sums)
                     additional_summary_rows.append(additional_sums)
+                    usar_summary_uvsg.append(usar_columns)
                 else:
                     print(f"⚠️ File UVSG '{entry[1]}' tidak berhasil diproses atau hasilnya None.")
 
@@ -417,11 +523,12 @@ def main(params):
     else:
         summary_rows_uvsg = []
         additional_summary_rows = []
+        usar_summary_uvsg = []
 
 
     combined_summary = []
-    for main_row, add_row in zip(summary_rows_uvsg, additional_summary_rows):
-        combined_row = {**main_row, **add_row}
+    for main_row, add_row, usar_row in zip_longest(summary_rows_uvsg, additional_summary_rows, usar_summary_uvsg):
+        combined_row = {**main_row, **add_row, **usar_row}
         combined_summary.append(combined_row)
 
     if combined_summary:
@@ -431,9 +538,9 @@ def main(params):
             uvsg_1 = uvsg_1[cols]
         else:
             print("⚠️ UVSG DataFrame ada tapi kolom 'File_Name' tidak ditemukan.")
-            uvsg_1 = pd.DataFrame(columns=['File_Name'] + columns_to_sum_uvsg + additional_columns_uvsg)
+            uvsg_1 = pd.DataFrame(columns=['File_Name'] + columns_to_sum_uvsg + additional_columns_uvsg + u_sar)
     else:
-        uvsg_1 = pd.DataFrame(columns=['File_Name'] + columns_to_sum_uvsg + additional_columns_uvsg)
+        uvsg_1 = pd.DataFrame(columns=['File_Name'] + columns_to_sum_uvsg + additional_columns_uvsg + u_sar)
 
     uvsg_1 = uvsg_1.rename(columns={'u_sar': 'c_sar'})
     if 'period' in uvsg_1.columns:
@@ -473,9 +580,10 @@ def main(params):
 
     mapping_code = global_filter_rafm.drop(columns = {'File Name'})
     mapping = pd.concat([code_rafm,mapping_code], axis = 1)
-    global_filter_rafm = global_filter_rafm.groupby('File Name', as_index = False).first()
+    mapping = mapping[~mapping['RAFM File Name'].astype(str).str.contains('_ori',regex = True, na = False)]
+    cf_rafm = cf_rafm.groupby('RAFM File Name', as_index = False).first()
     global_filter_rafm = global_filter_rafm.rename(columns = {'File Name':'RAFM File Name'})
-    cf_rafm = pd.merge(cf_rafm,global_filter_rafm,on = 'RAFM File Name', how = 'left')
+    cf_rafm = pd.merge(global_filter_rafm,cf_rafm,on = 'RAFM File Name', how = 'left')
     global_filter_uvsg = global_filter_uvsg.groupby('File Name', as_index = False).first()
     global_filter_uvsg = global_filter_uvsg.rename(columns = {'File Name':'UVSG File Name'})
     uvsg = pd.merge(uvsg,global_filter_uvsg,on = 'UVSG File Name', how = 'left')
@@ -522,13 +630,8 @@ def main(params):
         control.at[idx, 'check sign'] = 'Check Sign'
         control.at[idx, 'result'] = check_sign_total
 
-    if 'RAFM File Name' in cf_rafm.columns:
-        last_3_cols = cf_rafm.columns[-3:].tolist()
-        other_cols = [col for col in cf_rafm.columns if col not in last_3_cols and col != 'RAFM File Name']
-        cf_rafm = cf_rafm[['RAFM File Name'] + last_3_cols + other_cols]
-
     if 'UVSG File Name' in uvsg.columns:
-        last_3_cols = uvsg.columns[-3:].tolist()
+        last_3_cols = uvsg.columns[-4:].tolist()
         other_cols_uvsg = [col for col in uvsg.columns if col not in last_3_cols and col != 'UVSG File Name']
         uvsg= uvsg[['UVSG File Name'] + last_3_cols + other_cols_uvsg]
     

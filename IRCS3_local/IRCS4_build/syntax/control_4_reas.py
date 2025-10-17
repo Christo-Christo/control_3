@@ -13,45 +13,28 @@ columns_to_sum_rafm = ['prm_inc','lrc_cl_ins','cov_units','pv_reins_clm','lrc_cl
 cols_to_compare = ['prm_inc','lrc_cl_ins','cov_units','dac_cov_units','lrc_cl_ins_dth']
 target_sheets = ['extraction IDR', 'extraction USD']
 global_filter_rafm = None
+
 def process_argo_file(file_path):
+    file_name_argo = os.path.splitext(os.path.basename(file_path))[0]
     try:
-        file_name_argo = os.path.splitext(os.path.basename(file_path))[0]
         wb = load_workbook(file_path, read_only=True, data_only=True)
-
-        if 'Sheet1' not in wb.sheetnames:
-            wb.close()
-            return None
-
         sheet = wb['Sheet1']
         rows = sheet.iter_rows(values_only=True)
-
-        try:
-            header = next(rows)
-        except StopIteration:
-            wb.close()
-            return None
-
+        header = next(rows)
         col_index = {col: i for i, col in enumerate(header) if col in columns_to_sum_argo}
-        if not col_index:
-            wb.close()
-            return None
-
         sums = {col: 0 for col in col_index}
-
         for row in rows:
             for col, idx in col_index.items():
                 if idx < len(row):
                     val = row[idx]
                     if isinstance(val, (int, float)):
                         sums[col] += val
-
         wb.close()
-        sums['File_Name'] = file_name_argo
-        return sums
-
     except Exception as e:
-        print(f"❌ Error processing {file_path}: {e}")
-        return None
+        print(f"❌ Gagal proses {file_name_argo}: {e}")
+        sums = {}
+    sums['File_Name'] = file_name_argo
+    return sums
 
 def process_rafm_file(entry):
     file_path, file_name = entry
@@ -133,6 +116,7 @@ def main(params):
     cf_argo = pd.DataFrame(summary_rows_argo)
     cf_argo = cf_argo[['File_Name'] + [col for col in cf_argo.columns if col != 'File_Name']]
     cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name', 'DAC_COV_UNITS': 'dac_cov_units'})
+    code = code[~code['RAFM File Name'].astype(str).str.contains('_ori',regex = True, na = False)]
     cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
     
     columns_to_drop = []
@@ -155,47 +139,21 @@ def main(params):
             summary_rows_rafm.append(result)
 
     all_runs = ['11', '21', '31', '41']
-
-    original_data_by_file = {row['File_Name']: row.copy() for row in summary_rows_rafm}
-
-    from collections import defaultdict
-    grouped_files = defaultdict(dict)
-
-    for row in summary_rows_rafm:
-        file_name = row['File_Name']
-        for run in all_runs:
-            if f"run{run}" in file_name:
-                prefix = file_name.split(f"run{run}")[0]
-                grouped_files[prefix][run] = file_name
-                break 
-
-    for prefix, run_map in grouped_files.items():
-        present_runs = sorted(run_map.keys()) 
-
-        for target_run in present_runs:
-            target_file = run_map[target_run]
-
-
-            runs_to_sum = [r for r in all_runs if r <= target_run and r in run_map]
-
-            total_sum = {col: 0 for col in columns_to_sum_rafm }
-            for run in runs_to_sum:
-                file = run_map[run]
-                data_row = original_data_by_file[file]
-                for col in total_sum:
-                    total_sum[col] += data_row.get(col, 0)
-
-            for i, row in enumerate(summary_rows_rafm):
-                if row['File_Name'] == target_file:
-                    for col in total_sum:
-                        summary_rows_rafm[i][col] = total_sum[col]
-                    break
-
+    pattern = '|'.join([f'run{r}' for r in all_runs])
+    summary_rows_rafm = pd.DataFrame(summary_rows_rafm)
+    def add_ori_if_run(x):
+        for r in all_runs:
+            if re.search(fr'run_?{r}', x, re.IGNORECASE):
+                return x + "_ori"
+        return x
+    
+    summary_rows_rafm['File_Name'] = summary_rows_rafm['File_Name'].apply(add_ori_if_run)
     cf_rafm_1 = pd.DataFrame(summary_rows_rafm)
     cf_rafm_1 = cf_rafm_1[['File_Name'] + [col for col in cf_rafm_1.columns if col != 'File_Name']]
     cf_rafm_1 = cf_rafm_1.rename(columns={'File_Name': 'RAFM File Name'})
     cf_rafm_1 = cf_rafm_1.groupby('RAFM File Name', as_index=False).first()
     cf_rafm_merge = pd.merge(code, cf_rafm_1, on="RAFM File Name", how="left").fillna(0)
+    run1_ori = cf_rafm_1[cf_rafm_1['RAFM File Name'].str.contains(pattern, case=False, na=False)]
 
     numeric_cols = cf_rafm_merge.select_dtypes(include='number').columns
     sum_rows = cf_rafm_merge[cf_rafm_merge['RAFM File Name'].str.contains("SUM_", na=False)]
@@ -223,9 +181,9 @@ def main(params):
         cf_rafm = cf_rafm_merge.drop(columns=columns_to_drop)
     else:
         cf_rafm = cf_rafm_merge.copy()
-    
+        
+    cf_rafm = pd.concat([cf_rafm,run1_ori])
     cf_rafm['dac_cov_units'] = cf_rafm['cov_units']
-
     rafm_manual = pd.read_excel(rafm_manual_path, sheet_name = 'Sheet1',engine = 'openpyxl')
     rafm_manual = rafm_manual.drop (columns = ['No'])
     rafm_manual = rafm_manual.fillna(0)
@@ -265,10 +223,11 @@ def main(params):
     cf_argo.insert(0, 'No', index_labels)
     cf_argo = pd.concat([cf_argo, sign_logic], ignore_index=True)
     cf_argo.loc[cf_argo.index[-1], 'ARGO File Name'] = 'Sign Logic'
-    index_labels_rafm = list(range(1, len(cf_rafm) + 1))
+    index_labels_rafm = list(range(1, len(cf_rafm)+1))
     cf_rafm.insert(0, 'No', index_labels_rafm)
     index_labels_manual= list(range(1, len(rafm_manual)+1))
     rafm_manual.insert(0, 'No', index_labels_manual)
+    final = final[~final['RAFM File Name'].astype(str).str.contains('_ori',regex = True, na = False)]
     index_labels_final= list(range(1, len(final)+1))
     final.insert(0, 'No', index_labels_final)
 

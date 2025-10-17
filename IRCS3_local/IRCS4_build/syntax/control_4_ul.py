@@ -156,6 +156,7 @@ def main(params):
 
     cf_argo = pd.DataFrame(summary_rows_argo)
     cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name'})
+    code = code[~code['RAFM File Name'].astype(str).str.contains('_ori',regex = True, na = False)]
     cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
     
     columns_to_drop = []
@@ -194,44 +195,22 @@ def main(params):
         combined_summary.append(combined_row)
 
     all_runs = ['11', '21', '31', '41']
-
-    original_data_by_file = {row['File_Name']: row.copy() for row in combined_summary}
-
-    from collections import defaultdict
-    grouped_files = defaultdict(dict)
-
-    for row in combined_summary:
-        file_name = row['File_Name']
-        for run in all_runs:
-            if f"run{run}" in file_name:
-                prefix = file_name.split(f"run{run}")[0]
-                grouped_files[prefix][run] = file_name
-                break 
-
-    for prefix, run_map in grouped_files.items():
-        present_runs = sorted(run_map.keys()) 
-
-        for target_run in present_runs:
-            target_file = run_map[target_run]
-
-
-            runs_to_sum = [r for r in all_runs if r <= target_run and r in run_map]
-
-            total_sum = {col: 0 for col in columns_to_sum_rafm + additional_columns}
-            for run in runs_to_sum:
-                file = run_map[run]
-                data_row = original_data_by_file[file]
-                for col in total_sum:
-                    total_sum[col] += data_row.get(col, 0)
-
-            for i, row in enumerate(combined_summary):
-                if row['File_Name'] == target_file:
-                    for col in total_sum:
-                        combined_summary[i][col] = total_sum[col]
-                    break
-
+    pattern = '|'.join([f'run{r}' for r in all_runs])
+    combined_summary = pd.DataFrame(combined_summary)
+    def add_ori_if_run(x):
+        for r in all_runs:
+            if re.search(fr'run_?{r}', x, re.IGNORECASE):
+                return x + "_ori"
+        return x
+    
+    combined_summary['File_Name'] = combined_summary['File_Name'].apply(add_ori_if_run)
+    cf_rafm_1 = pd.DataFrame(combined_summary)
+    cols = ['File_Name'] + [col for col in cf_rafm_1.columns if col != 'File_Name']
+    cf_rafm_1 = cf_rafm_1[cols]
     cf_rafm = pd.DataFrame(combined_summary).rename(columns={'File_Name': 'RAFM File Name'})
+    run1_ori = cf_rafm[cf_rafm['RAFM File Name'].str.contains(pattern, case=False, na=False)]
     cf_rafm_merge = pd.merge(code, cf_rafm, on="RAFM File Name", how="left").fillna(0)
+    cf_rafm_merge.fillna(0, inplace=True)
 
     sum_rows = cf_rafm_merge[cf_rafm_merge['RAFM File Name'].str.contains("SUM_", na=False)]
     numeric_cols = cf_rafm_merge.select_dtypes(include='number').columns
@@ -255,7 +234,8 @@ def main(params):
         cf_rafm = cf_rafm_merge.drop(columns=columns_to_drop)
     else:
         cf_rafm = cf_rafm_merge.copy()
-    
+    cf_rafm = pd.concat([cf_rafm,run1_ori])
+    cf_rafm = cf_rafm.drop(columns = ['period'])
     cf_rafm['dac'] = -cf_rafm['r_acq_cost']
     cf_rafm['nattr_exp'] = cf_rafm[['nattr_exp_acq', 'nattr_exp_inv', 'nattr_exp_maint']].sum(axis=1)
     cf_rafm['pv_clm_surr_pw_n'] = cf_rafm[['pv_surr', 'pv_pw_n']].sum(axis=1)
@@ -272,9 +252,10 @@ def main(params):
 
     mapping_code = global_filter_rafm.drop(columns = {'File Name'})
     mapping = pd.concat([code,mapping_code], axis = 1)
-    global_filter_rafm = global_filter_rafm.groupby('File Name', as_index = False).first()
+    mapping = mapping[~mapping['RAFM File Name'].astype(str).str.contains('_ori',regex = True, na = False)]
+    cf_rafm = cf_rafm.groupby('RAFM File Name', as_index = False).first()
     global_filter_rafm = global_filter_rafm.rename(columns = {'File Name':'RAFM File Name'})
-    cf_rafm = pd.merge(cf_rafm,global_filter_rafm,on = 'RAFM File Name', how = 'left')
+    cf_rafm = pd.merge(global_filter_rafm,cf_rafm,on = 'RAFM File Name', how = 'left')
     logic_row = sign_logic.iloc[0]
 
     valid_cols = [col for col in logic_row.index if col in cf_argo.columns]
@@ -318,10 +299,6 @@ def main(params):
         idx = val_year_idx[0]
         control.at[idx, 'check sign'] = 'Check Sign'
         control.at[idx, 'result'] = check_sign_total
-    if 'RAFM File Name' in cf_rafm.columns:
-        last_3_cols = cf_rafm.columns[-3:].tolist()
-        other_cols = [col for col in cf_rafm.columns if col not in last_3_cols and col != 'RAFM File Name']
-        cf_rafm = cf_rafm[['RAFM File Name'] + last_3_cols + other_cols]
     index_labels_rafm = list(range(1, len(cf_rafm)+1))
     cf_rafm.insert(0, 'No', index_labels_rafm)
     return {
