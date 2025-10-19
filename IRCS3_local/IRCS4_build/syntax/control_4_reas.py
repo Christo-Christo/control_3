@@ -12,115 +12,203 @@ columns_to_sum_argo = [
 columns_to_sum_rafm = ['prm_inc','lrc_cl_ins','cov_units','pv_reins_clm','lrc_cl_ins_dth']
 cols_to_compare = ['prm_inc','lrc_cl_ins','cov_units','dac_cov_units','lrc_cl_ins_dth']
 target_sheets = ['extraction IDR', 'extraction USD']
-global_filter_rafm = None  # Belum digunakan, bisa diimplementasikan jika diperlukan
+global_filter_rafm = None
+
+
+def parse_numeric_fast(val):
+    """
+    Fast numeric parser optimized for Excel data (value/text, no formulas)
+    Handles: numbers, text numbers, formatted numbers, accounting format
+    """
+    # Level 0: None/Empty (fastest check)
+    if val is None or val == '':
+        return None
+    
+    # Level 1: Already numeric - FAST PATH (most common)
+    if isinstance(val, (int, float)):
+        return float(val)
+    
+    # Level 2: String processing
+    if isinstance(val, str):
+        s = val.strip()
+        
+        if not s or s.lower() in ['none', 'nan', 'n/a', '-']:
+            return None
+        
+        # Try direct conversion (for clean "123.45")
+        try:
+            return float(s)
+        except ValueError:
+            pass
+        
+        # Process formatted strings
+        try:
+            # Remove spaces
+            s = s.replace('\xa0', '').replace(' ', '')
+            
+            # Percentage
+            is_percent = s.endswith('%')
+            if is_percent:
+                s = s[:-1]
+            
+            # Accounting format: (123.45) = -123.45
+            is_negative = False
+            if s.startswith('(') and s.endswith(')'):
+                is_negative = True
+                s = s[1:-1]
+            
+            # Separator detection
+            comma_count = s.count(',')
+            dot_count = s.count('.')
+            
+            # No separators
+            if comma_count == 0 and dot_count <= 1:
+                result = float(s)
+            # Only commas (thousands)
+            elif dot_count == 0 and comma_count > 0:
+                result = float(s.replace(',', ''))
+            # Both separators
+            elif comma_count > 0 and dot_count > 0:
+                last_comma = s.rfind(',')
+                last_dot = s.rfind('.')
+                
+                if last_dot > last_comma:
+                    # US: 1,234.56
+                    result = float(s.replace(',', ''))
+                else:
+                    # EU: 1.234,56
+                    result = float(s.replace('.', '').replace(',', '.'))
+            # Multiple dots (EU thousands)
+            elif dot_count > 1:
+                result = float(s.replace('.', ''))
+            # Single comma
+            elif comma_count == 1:
+                comma_pos = s.find(',')
+                digits_after = len(s) - comma_pos - 1
+                
+                if digits_after == 2 and comma_pos <= 3:
+                    # Decimal: 12,34
+                    result = float(s.replace(',', '.'))
+                else:
+                    # Thousands: 1234,56
+                    result = float(s.replace(',', ''))
+            else:
+                result = float(s)
+            
+            # Apply modifiers
+            if is_negative:
+                result = -result
+            if is_percent:
+                result = result / 100.0
+            
+            return result
+            
+        except (ValueError, AttributeError):
+            return None
+    
+    # Last resort
+    try:
+        return float(val)
+    except:
+        return None
+
 
 def process_argo_file(file_path):
-    """Optimized ARGO file processing with debugging logs"""
+    """Optimized ARGO file processing with fast parser"""
     file_name_argo = os.path.splitext(os.path.basename(file_path))[0]
-    sums = {col: 0 for col in columns_to_sum_argo}  # Inisialisasi dengan nol
-    sums['File_Name'] = file_name_argo  # Pastikan File_Name selalu ada
     
     try:
         wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
         sheet = wb['Sheet1']
         
+        # Load all data at once
         data = list(sheet.values)
         if not data:
             wb.close()
-            print(f"❌ File {file_name_argo} kosong, tidak ada data.")
-            return sums  # Kembalikan sums dengan nol
+            return {'File_Name': file_name_argo}
         
         header = data[0]
         col_index = {col: i for i, col in enumerate(header) if col in columns_to_sum_argo}
+        sums = {col: 0 for col in col_index}
         
+        # Process rows with fast parser
         for row in data[1:]:
             for col, idx in col_index.items():
                 if idx < len(row):
-                    val = row[idx]
-                    if isinstance(val, (int, float)):
-                        sums[col] += val
-                        print(f"Menambahkan nilai {val} ke {col} di file {file_name_argo}")  # Logging
-                    else:
-                        print(f"Ignoring nilai non-numerik '{val}' di kolom {col} untuk file {file_name_argo}")  # Debugging
+                    parsed_val = parse_numeric_fast(row[idx])
+                    if parsed_val is not None:
+                        sums[col] += parsed_val
+        
         wb.close()
+        
     except Exception as e:
         print(f"❌ Gagal proses {file_name_argo}: {e}")
-        # Kembalikan sums dengan nol untuk semua kolom
-        for col in columns_to_sum_argo:
-            sums[col] = 0  # Set nilai ke nol jika error
+        sums = {}
     
+    sums['File_Name'] = file_name_argo
     return sums
 
+
 def process_rafm_file(entry):
-    """Optimized RAFM file processing with debugging logs"""
+    """Optimized RAFM file processing with fast parser"""
     file_path, file_name = entry
     total_sums = {col: 0 for col in columns_to_sum_rafm}
-    total_sums['File_Name'] = file_name  # Pastikan File_Name selalu ada
-    
+
     try:
         wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
         
         for sheet_name in target_sheets:
             if sheet_name not in wb.sheetnames:
-                print(f"Sheet {sheet_name} tidak ditemukan di file {file_name}")
                 continue
-            
+
             sheet = wb[sheet_name]
             data = list(sheet.values)
             if len(data) < 20:
-                print(f"Data di sheet {sheet_name} kurang dari 20 baris, melewati.")
                 continue
             
+            # Find header
             header = None
             data_start_idx = 0
             for idx, raw in enumerate(data[:20]):
                 cleaned = [str(h).strip().lower() if h else '' for h in raw]
                 if 'goc' in cleaned:
                     header = cleaned
-                    data_start_idx = idx + 1  # Mulai setelah header
-                    print(f"Header 'goc' ditemukan di baris {idx} untuk sheet {sheet_name}")
+                    data_start_idx = idx + 4  # Skip header + 3 rows
                     break
-            
+
             if not header:
-                print(f"Header 'goc' tidak ditemukan di sheet {sheet_name}")
                 continue
-            
-            data_start_idx += 3  # Lewati 3 baris berikutnya
-            
+
+            # Build column index
             col_index = {}
             for i, col in enumerate(header):
-                if col in [c.lower() for c in columns_to_sum_rafm] or col == 'goc':
+                if col in [c.lower() for c in columns_to_sum_rafm]:
                     col_index[col] = i
-            
+
+            # Process data rows
             for row in data[data_start_idx:]:
                 for col in columns_to_sum_rafm:
                     idx = col_index.get(col.lower())
                     if idx is not None and idx < len(row):
-                        val = row[idx]
-                        if isinstance(val, (int, float)):
-                            if val != 0:  # Kondisi asli, bisa dihapus jika ingin include nol
-                                total_sums[col] += val
-                                print(f"Menambahkan nilai {val} ke {col} di file {file_name}")  # Logging
-                            else:
-                                print(f"Skipping nilai 0 di {col} untuk file {file_name}")  # Debugging
-                        else:
-                            print(f"Ignoring nilai non-numerik '{val}' di kolom {col} untuk file {file_name}")  # Debugging
-        
+                        parsed_val = parse_numeric_fast(row[idx])
+                        if parsed_val is not None and parsed_val != 0:
+                            total_sums[col] += parsed_val
+
         wb.close()
-    
+
     except Exception as e:
-        print(f"❌ Error processing file {file_name}: {e}")
-        # Kembalikan total_sums dengan nol untuk semua kolom
-        for col in columns_to_sum_rafm:
-            total_sums[col] = 0  # Set nilai ke nol jika error
-    
+        print(f"   ❌ Error processing file {file_name}: {e}")
+
+    total_sums['File_Name'] = file_name
     return total_sums
+
 
 def main(params):
     global columns_to_sum_argo, columns_to_sum_rafm, cols_to_compare, target_sheets
 
     input_excel = params['input excel']
-    
+
+    # Read all sheets at once
     excel_file = pd.ExcelFile(input_excel)
     code = pd.read_excel(excel_file, sheet_name='Code')
     sign_logic = pd.read_excel(excel_file, sheet_name='Sign Logic')
@@ -134,6 +222,7 @@ def main(params):
     folder_path_rafm = path_map.get('rafm', '')
     rafm_manual_path = path_map.get('rafm manual', '')
 
+    # Process ARGO files
     file_paths_argo = [f for f in glob.glob(os.path.join(folder_path_argo, '*.xlsx')) 
                        if not os.path.basename(f).startswith('~$')]
     
@@ -155,6 +244,7 @@ def main(params):
     if columns_to_drop:
         cf_argo = cf_argo.drop(columns=columns_to_drop)
     
+    # Process RAFM files
     file_paths_rafm = [f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx')) 
                        if not os.path.basename(f).startswith('~$')]
     file_entries = [(f, os.path.splitext(os.path.basename(f))[0]) for f in file_paths_rafm]
@@ -163,10 +253,14 @@ def main(params):
         results = list(executor.map(process_rafm_file, file_entries))
 
     summary_rows_rafm = [result for result in results if result]
+
+    all_runs = ['11', '21', '31', '41']
+    pattern = '|'.join([f'run{r}' for r in all_runs])
+    
     summary_rows_rafm = pd.DataFrame(summary_rows_rafm)
     
     def add_ori_if_run(x):
-        for r in ['11', '21', '31', '41']:
+        for r in all_runs:
             if re.search(fr'run_?{r}', x, re.IGNORECASE):
                 return x + "_ori"
         return x
@@ -177,20 +271,22 @@ def main(params):
     cf_rafm_1 = cf_rafm_1.rename(columns={'File_Name': 'RAFM File Name'})
     cf_rafm_1 = cf_rafm_1.groupby('RAFM File Name', as_index=False).first()
     cf_rafm_merge = pd.merge(code, cf_rafm_1, on="RAFM File Name", how="left").fillna(0)
-    run1_ori = cf_rafm_1[cf_rafm_1['RAFM File Name'].str.contains("run11|run21|run31|run41", case=False, na=False)]
+    run1_ori = cf_rafm_1[cf_rafm_1['RAFM File Name'].str.contains(pattern, case=False, na=False)]
 
     numeric_cols = cf_rafm_merge.select_dtypes(include='number').columns
     sum_rows = cf_rafm_merge[cf_rafm_merge['RAFM File Name'].str.contains("SUM_", na=False)]
 
     for idx, row in sum_rows.iterrows():
         rafm_value = row['RAFM File Name']
+
         if 'SUM_' in rafm_value:
             keyword = rafm_value.split('SUM_')[-1]
             pattern_search = re.escape(keyword).replace("-", "[-_]?")
             matched_rows = cf_rafm_merge[cf_rafm_merge['ARGO File Name'].str.contains(
                 pattern_search, case=False, regex=True, na=False)]
-            print(f"Mencari pola '{pattern_search}' untuk SUM_{keyword} - Ditemukan {len(matched_rows)} baris")  # Logging debugging
+
             total_values = matched_rows[numeric_cols].sum()
+
             for col in numeric_cols:
                 cf_rafm_merge.at[idx, col] = total_values[col]
 
@@ -208,7 +304,7 @@ def main(params):
 
     final = code.copy()
     for col in cols_to_compare:
-        if col not in final.columns:
+        if col not in code.columns:
             final[col] = pd.NA
 
     logic_row = sign_logic.iloc[0]

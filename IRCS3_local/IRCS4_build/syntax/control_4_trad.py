@@ -7,7 +7,6 @@ from openpyxl import load_workbook
 from itertools import zip_longest
 import traceback
 
-
 columns_to_sum_argo = [
     'prm_inc','lrc_cl_ins','lrc_cl_inv','r_exp_m','r_acq_cost',
     'cov_units','dac_cov_units','dac','nattr_exp_acq','nattr_exp_inv',
@@ -43,11 +42,84 @@ c_sar = ['c_sar']
 additional_columns_uvsg = ['cov_units', 'pv_r_exp_m', 'pv_surr']
 u_sar = ['u_sar']
 target_sheets = ['extraction_IDR', 'extraction_USD']
-summary_rows_argo = []
-summary_rows_rafm = []
-additional_summary_rows = []
 global_filter_rafm = None
 global_filter_uvsg = None
+
+
+def parse_numeric_fast(val):
+    """Fast numeric parser optimized for Excel data"""
+    if val is None or val == '':
+        return None
+    
+    if isinstance(val, (int, float)):
+        return float(val)
+    
+    if isinstance(val, str):
+        s = val.strip()
+        
+        if not s or s.lower() in ['none', 'nan', 'n/a', '-']:
+            return None
+        
+        try:
+            return float(s)
+        except ValueError:
+            pass
+        
+        try:
+            s = s.replace('\xa0', '').replace(' ', '')
+            
+            is_percent = s.endswith('%')
+            if is_percent:
+                s = s[:-1]
+            
+            is_negative = False
+            if s.startswith('(') and s.endswith(')'):
+                is_negative = True
+                s = s[1:-1]
+            
+            comma_count = s.count(',')
+            dot_count = s.count('.')
+            
+            if comma_count == 0 and dot_count <= 1:
+                result = float(s)
+            elif dot_count == 0 and comma_count > 0:
+                result = float(s.replace(',', ''))
+            elif comma_count > 0 and dot_count > 0:
+                last_comma = s.rfind(',')
+                last_dot = s.rfind('.')
+                
+                if last_dot > last_comma:
+                    result = float(s.replace(',', ''))
+                else:
+                    result = float(s.replace('.', '').replace(',', '.'))
+            elif dot_count > 1:
+                result = float(s.replace('.', ''))
+            elif comma_count == 1:
+                comma_pos = s.find(',')
+                digits_after = len(s) - comma_pos - 1
+                
+                if digits_after == 2 and comma_pos <= 3:
+                    result = float(s.replace(',', '.'))
+                else:
+                    result = float(s.replace(',', ''))
+            else:
+                result = float(s)
+            
+            if is_negative:
+                result = -result
+            if is_percent:
+                result = result / 100.0
+            
+            return result
+            
+        except (ValueError, AttributeError):
+            return None
+    
+    try:
+        return float(val)
+    except:
+        return None
+
 
 def process_argo_file(file_path):
     """Optimized ARGO file processing"""
@@ -55,7 +127,7 @@ def process_argo_file(file_path):
     try:
         wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
         sheet = wb['Sheet1']
-
+        
         data = list(sheet.values)
         if not data:
             wb.close()
@@ -68,9 +140,9 @@ def process_argo_file(file_path):
         for row in data[1:]:
             for col, idx in col_index.items():
                 if idx < len(row):
-                    val = row[idx]
-                    if isinstance(val, (int, float)):
-                        sums[col] += val
+                    parsed_val = parse_numeric_fast(row[idx])
+                    if parsed_val is not None:
+                        sums[col] += parsed_val
         wb.close()
     except Exception as e:
         print(f"❌ Gagal proses {file_name_argo}: {e}")
@@ -79,46 +151,30 @@ def process_argo_file(file_path):
     sums['File_Name'] = file_name_argo
     return sums
 
+
 def try_match_filter(filter_df, file_name):
+    """Optimized filter matching"""
     base = os.path.splitext(file_name)[0]
     candidates = [
-        file_name,
-        base,
-        file_name.lower(),
-        base.lower(),
-        base.replace('_',' ').lower(),
-        base.replace(' ','_').lower()
+        file_name, base, file_name.lower(), base.lower(),
+        base.replace('_',' ').lower(), base.replace(' ','_').lower()
     ]
+    
     for c in candidates:
         m = filter_df[filter_df['File Name'].str.lower() == str(c).lower()]
         if not m.empty:
             return m
+    
     for c in candidates:
         m = filter_df[filter_df['File Name'].str.lower().str.contains(str(c).lower(), na=False)]
         if not m.empty:
             return m
+    
     return filter_df[filter_df['File Name'] == file_name]
 
-def parse_numeric(val):
-    if val is None:
-        raise ValueError("None")
-    s = str(val).strip()
-    if s == '':
-        raise ValueError("empty")
-    s = s.replace('\xa0','').replace(' ', '')
-    is_percent = s.endswith('%')
-    if is_percent:
-        s = s[:-1]
-    if re.match(r'^\(.*\)$', s):
-        s = '-' + s.strip('()')
-    s = s.replace(',', '')
-    s = re.sub(r'[^\d\.\-eE]', '', s)
-    valf = float(s)
-    if is_percent:
-        valf = valf / 100.0
-    return valf
 
 def process_rafm_file(args):
+    """Optimized RAFM file processing"""
     file_path, file_name, filter_df = args
     try:
         match = try_match_filter(filter_df, file_name)
@@ -135,28 +191,29 @@ def process_rafm_file(args):
         include = str(match['Include Year'].values[0])
         sar = int(match['C_sar'].values[0])
 
-        wb = load_workbook(file_path, read_only=True, data_only=True)
+        wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
+        
         for sheet_name in target_sheets:
             try:
-                if sheet_name not in wb.sheetnames and sheet_name.lower() not in [s.lower().strip() for s in wb.sheetnames]:
-                    continue
                 actual_sheetnames = [s.strip() for s in wb.sheetnames]
                 matched_sheet = None
                 for s in actual_sheetnames:
                     if s.lower().strip() == sheet_name.lower().strip():
                         matched_sheet = s
                         break
+                
                 if matched_sheet is None:
                     continue
 
                 sheet = wb[matched_sheet]
-                rows = sheet.iter_rows(values_only=True)
-                try:
-                    header = next(rows)
-                except StopIteration:
+                data = list(sheet.values)
+                if not data:
                     continue
+                
+                header = data[0]
                 expected = [c.lower() for c in columns_to_sum_rafm + additional_columns + c_sar]
                 col_index = {}
+                
                 for i, col in enumerate(header):
                     col_name = str(col).strip().lower() if col is not None else ''
                     if col_name in expected or col_name == 'goc' or col_name == 'period':
@@ -165,7 +222,7 @@ def process_rafm_file(args):
                 if 'goc' not in col_index:
                     continue
 
-                for row in rows:
+                for row in data[1:]:
                     val_goc = ''
                     try:
                         idx_goc = col_index.get('goc')
@@ -178,13 +235,9 @@ def process_rafm_file(args):
                     period_value = None
                     if period_idx is not None and period_idx < len(row):
                         period_raw = row[period_idx]
-                        try:
-                            period_value = int(period_raw)
-                        except Exception:
-                            try:
-                                period_value = int(float(str(period_raw).replace(',','').strip()))
-                            except Exception:
-                                period_value = None
+                        period_value = parse_numeric_fast(period_raw)
+                        if period_value is not None:
+                            period_value = int(period_value)
 
                     skip_row = False
                     if include != '-' and exclude != '-':
@@ -203,36 +256,24 @@ def process_rafm_file(args):
                         for col in columns_to_sum_rafm:
                             idx = col_index.get(col.lower())
                             if idx is not None and idx < len(row):
-                                raw = row[idx]
-                                try:
-                                    v = parse_numeric(raw)
-                                except Exception:
-                                    continue
-                                if v != 0:
+                                v = parse_numeric_fast(row[idx])
+                                if v is not None and v != 0:
                                     total_sums[col] += v
 
                     if period_value is not None and period_value >= 0:
                         for col in additional_columns:
                             idx = col_index.get(col.lower())
                             if idx is not None and idx < len(row):
-                                raw = row[idx]
-                                try:
-                                    v = parse_numeric(raw)
-                                except Exception:
-                                    continue
-                                if v != 0:
+                                v = parse_numeric_fast(row[idx])
+                                if v is not None and v != 0:
                                     additional_sums[col] += v
 
                     if period_value is not None and period_value >= sar:
                         for col in c_sar:
                             idx = col_index.get(col.lower())
                             if idx is not None and idx < len(row):
-                                raw = row[idx]
-                                try:
-                                    v = parse_numeric(raw)
-                                except Exception:
-                                    continue
-                                if v != 0:
+                                v = parse_numeric_fast(row[idx])
+                                if v is not None and v != 0:
                                     csar_columns[col] += v
 
             except Exception:
@@ -254,6 +295,7 @@ def process_rafm_file(args):
 
 
 def process_uvsg_file(args):
+    """Optimized UVSG file processing"""
     file_path, file_name, filter_df = args
 
     match = try_match_filter(filter_df, file_name)
@@ -277,7 +319,8 @@ def process_uvsg_file(args):
     usar_columns = {col: 0.0 for col in u_sar}
 
     try:
-        wb = load_workbook(file_path, read_only=True, data_only=True)
+        wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
+        
         for sheet_name in target_sheets:
             try:
                 actual_sheets = [s.strip() for s in wb.sheetnames]
@@ -290,14 +333,14 @@ def process_uvsg_file(args):
                     continue
 
                 sheet = wb[matched_sheet]
-                rows = sheet.iter_rows(values_only=True)
-                try:
-                    header = next(rows)
-                except StopIteration:
+                data = list(sheet.values)
+                if not data:
                     continue
 
+                header = data[0]
                 header_lower = [str(h).strip().lower() if h else '' for h in header]
                 col_index = {}
+                
                 for col in columns_to_sum_uvsg + additional_columns_uvsg + u_sar + ['goc', 'period']:
                     cl = col.lower()
                     if cl in header_lower:
@@ -306,18 +349,14 @@ def process_uvsg_file(args):
                 if 'goc' not in col_index:
                     continue
 
-                for row in rows:
+                for row in data[1:]:
                     val_goc = str(row[col_index['goc']]) if col_index['goc'] < len(row) and row[col_index['goc']] is not None else ''
                     period_idx = col_index.get('period')
                     period_value = None
                     if period_idx is not None and period_idx < len(row):
-                        try:
-                            period_value = int(row[period_idx])
-                        except:
-                            try:
-                                period_value = int(float(str(row[period_idx]).replace(',','').strip()))
-                            except:
-                                period_value = None
+                        period_value = parse_numeric_fast(row[period_idx])
+                        if period_value is not None:
+                            period_value = int(period_value)
 
                     skip_row = False
                     if include != '-' and exclude != '-':
@@ -332,45 +371,34 @@ def process_uvsg_file(args):
                     if skip_row:
                         continue
 
-                    # total sums (period > speed)
                     if period_value is not None and period_value > speed:
                         for col in columns_to_sum_uvsg:
                             idx = col_index.get(col.lower())
                             if idx is not None and idx < len(row):
-                                try:
-                                    v = parse_numeric(row[idx])
-                                except:
-                                    continue
-                                if v != 0:
+                                v = parse_numeric_fast(row[idx])
+                                if v is not None and v != 0:
                                     total_sums[col] += v
 
-                    # additional sums (period >= 0)
                     if period_value is not None and period_value >= 0:
                         for col in additional_columns_uvsg:
                             idx = col_index.get(col.lower())
                             if idx is not None and idx < len(row):
-                                try:
-                                    v = parse_numeric(row[idx])
-                                except:
-                                    continue
-                                if v != 0:
+                                v = parse_numeric_fast(row[idx])
+                                if v is not None and v != 0:
                                     additional_sums[col] += v
 
-                    # usar (period >= sar)
                     if period_value is not None and period_value >= sar:
                         for col in u_sar:
                             idx = col_index.get(col.lower())
                             if idx is not None and idx < len(row):
-                                try:
-                                    v = parse_numeric(row[idx])
-                                except:
-                                    continue
-                                if v != 0:
+                                v = parse_numeric_fast(row[idx])
+                                if v is not None and v != 0:
                                     usar_columns[col] += v
             except Exception:
                 print(f"Error processing sheet {sheet_name} in file {file_name}:")
                 traceback.print_exc()
                 continue
+                
         wb.close()
         total_sums['File_Name'] = file_name
         additional_sums['File_Name'] = file_name
@@ -384,11 +412,11 @@ def process_uvsg_file(args):
 
 
 def main(params):
+    """Optimized main function"""
     global global_filter_rafm, global_filter_uvsg
 
     input_excel = params['input excel']
 
-    # Read all sheets at once (lebih efisien)
     excel_file = pd.ExcelFile(input_excel)
     code = pd.read_excel(excel_file, sheet_name='Code')
     sign_logic = pd.read_excel(excel_file, sheet_name='Sign Logic')
@@ -404,43 +432,44 @@ def main(params):
     folder_path_uvsg = path_map.get('uvsg', '')
     rafm_manual_path = path_map.get('rafm manual', '')
 
-    file_paths_argo = [f for f in glob.glob(os.path.join(folder_path_argo, '*.xlsx')) if not os.path.basename(f).startswith('~$')]
+    file_paths_argo = [f for f in glob.glob(os.path.join(folder_path_argo, '*.xlsx')) 
+                       if not os.path.basename(f).startswith('~')]
+    
     optimal_workers = min(os.cpu_count() or 4, max(len(file_paths_argo), 1))
+    
     with ProcessPoolExecutor(max_workers=optimal_workers) as executor:
         summary_rows_argo = list(executor.map(process_argo_file, file_paths_argo))
+    
     cf_argo = pd.DataFrame(summary_rows_argo)
     if 'File_Name' in cf_argo.columns:
         cols = ['File_Name'] + [col for col in cf_argo.columns if col != 'File_Name']
         cf_argo = cf_argo[cols]
-    else:
-        print("⚠️ There is no 'FILE_NAME' on argo (empty files)")
-    cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name'})
-    code = code[~code['RAFM File Name'].astype(str).str.contains('_ori',regex = True, na = False)]
-    cf_argo = pd.merge(code,cf_argo, on = 'ARGO File Name', how = 'left')
     
-    # Fixed: Safely drop columns that exist
-    columns_to_drop = []
-    if 'RAFM File Name' in cf_argo.columns:
-        columns_to_drop.append('RAFM File Name')
-    if 'UVSG File Name' in cf_argo.columns:
-        columns_to_drop.append('UVSG File Name')
+    cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name'})
+    
+    mask = code['RAFM File Name'].astype(str).str.contains('_ori', regex=True, na=False)
+    code = code[~mask].copy()
+    
+    cf_argo = pd.merge(code, cf_argo, on='ARGO File Name', how='left')
+    
+    columns_to_drop = [col for col in ['RAFM File Name', 'UVSG File Name'] if col in cf_argo.columns]
     if columns_to_drop:
         cf_argo = cf_argo.drop(columns=columns_to_drop)
     
-    file_paths_rafm = [f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx')) if not os.path.basename(f).startswith('~$')]
-    file_entries = [
-    (f, os.path.splitext(os.path.basename(f))[0], global_filter_rafm)
-    for f in file_paths_rafm
-    ]
+    file_paths_rafm = [f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx')) 
+                       if not os.path.basename(f).startswith('~')]
+    file_entries = [(f, os.path.splitext(os.path.basename(f))[0], global_filter_rafm) 
+                    for f in file_paths_rafm]
 
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=optimal_workers) as executor:
         results = list(executor.map(process_rafm_file, file_entries))
+    
     summary_rows_rafm = []
     additional_summary_rows = []
     csar_summary = []
     for result in results:
         if result:
-            total_sums, additional_sums,csar_columns = result
+            total_sums, additional_sums, csar_columns = result
             summary_rows_rafm.append(total_sums)
             additional_summary_rows.append(additional_sums)
             csar_summary.append(csar_columns)
@@ -453,6 +482,7 @@ def main(params):
     all_runs = ['11', '21', '31', '41']
     pattern = '|'.join([f'run{r}' for r in all_runs])
     combined_summary = pd.DataFrame(combined_summary)
+    
     def add_ori_if_run(x):
         for r in all_runs:
             if re.search(fr'run_?{r}', x, re.IGNORECASE):
@@ -460,7 +490,7 @@ def main(params):
         return x
     
     combined_summary['File_Name'] = combined_summary['File_Name'].apply(add_ori_if_run)
-    cf_rafm_1 = pd.DataFrame(combined_summary)
+    cf_rafm_1 = combined_summary.copy()
     cols = ['File_Name'] + [col for col in cf_rafm_1.columns if col != 'File_Name']
     cf_rafm_1 = cf_rafm_1[cols]
 
@@ -481,33 +511,35 @@ def main(params):
 
         if 'SUM_' in rafm_value:
             keyword = rafm_value.split('SUM_')[-1]
-
-            pattern = re.escape(keyword).replace("-", "[-_]?")
-            matched_rows = cf_rafm_merge[cf_rafm_merge['ARGO File Name'].str.contains(pattern, case=False, regex=True, na=False)]
+            pattern_search = re.escape(keyword).replace("-", "[-_]?")
+            matched_rows = cf_rafm_merge[cf_rafm_merge['ARGO File Name'].str.contains(
+                pattern_search, case=False, regex=True, na=False)]
 
             total_values = matched_rows[numeric_cols].sum()
 
             for col in numeric_cols:
                 cf_rafm_merge.at[idx, col] = total_values[col]
 
-    columns_to_drop = []
-    if 'ARGO File Name' in cf_rafm_merge.columns:
-        columns_to_drop.append('ARGO File Name')
-    if 'period' in cf_rafm_merge.columns:
-        columns_to_drop.append('period')
+    columns_to_drop = [col for col in ['ARGO File Name', 'period'] if col in cf_rafm_merge.columns]
     if columns_to_drop:
         cf_rafm = cf_rafm_merge.drop(columns=columns_to_drop)
     else:
         cf_rafm = cf_rafm_merge.copy()
-    cf_rafm = pd.concat([cf_rafm,run1_ori])
-    cf_rafm = cf_rafm.drop(columns = ['period'])
+    
+    cf_rafm = pd.concat([cf_rafm, run1_ori], ignore_index=True)
+    if 'period' in cf_rafm.columns:
+        cf_rafm = cf_rafm.drop(columns=['period'])
+    
     cf_rafm['dac_cov_units'] = cf_rafm['cov_units']
     cf_rafm['dac'] = -cf_rafm['r_acq_cost']
+    
     nattr_exp = ['nattr_exp_acq', 'nattr_exp_inv', 'nattr_exp_maint']
     for col in nattr_exp:
         cf_rafm[col] = cf_rafm[col].astype(str).str.replace(',', '').astype(float)
     cf_rafm['nattr_exp'] = cf_rafm['nattr_exp_acq'] + cf_rafm['nattr_exp_inv'] + cf_rafm['nattr_exp_maint']
-    file_paths_uvsg = [f for f in glob.glob(os.path.join(folder_path_uvsg, '*.xlsx')) if not os.path.basename(f).startswith('~')]
+    
+    file_paths_uvsg = [f for f in glob.glob(os.path.join(folder_path_uvsg, '*.xlsx')) 
+                       if not os.path.basename(f).startswith('~')]
 
     summary_rows_uvsg = []
     additional_summary_rows = []
@@ -515,27 +547,21 @@ def main(params):
 
     if file_paths_uvsg:
         try:
-            file_entries = [(f, os.path.splitext(os.path.basename(f))[0], global_filter_uvsg) for f in file_paths_uvsg]
+            file_entries = [(f, os.path.splitext(os.path.basename(f))[0], global_filter_uvsg) 
+                           for f in file_paths_uvsg]
 
-            with ProcessPoolExecutor() as executor:
+            with ProcessPoolExecutor(max_workers=optimal_workers) as executor:
                 results_uvsg = list(executor.map(process_uvsg_file, file_entries))
 
             for entry, result in zip(file_entries, results_uvsg):
                 if isinstance(result, tuple) and len(result) == 3:
-                    total_sums, additional_sums,usar_columns = result
+                    total_sums, additional_sums, usar_columns = result
                     summary_rows_uvsg.append(total_sums)
                     additional_summary_rows.append(additional_sums)
                     usar_summary_uvsg.append(usar_columns)
-                else:
-                    print(f"⚠️ File UVSG '{entry[1]}' tidak berhasil diproses atau hasilnya None.")
 
         except Exception as e:
             print(f"❌ Terjadi kesalahan saat memproses file UVSG: {e}")
-    else:
-        summary_rows_uvsg = []
-        additional_summary_rows = []
-        usar_summary_uvsg = []
-
 
     combined_summary = []
     for main_row, add_row, usar_row in zip_longest(summary_rows_uvsg, additional_summary_rows, usar_summary_uvsg):
@@ -548,7 +574,6 @@ def main(params):
             cols = ['File_Name'] + [col for col in uvsg_1.columns if col != 'File_Name']
             uvsg_1 = uvsg_1[cols]
         else:
-            print("⚠️ UVSG DataFrame ada tapi kolom 'File_Name' tidak ditemukan.")
             uvsg_1 = pd.DataFrame(columns=['File_Name'] + columns_to_sum_uvsg + additional_columns_uvsg + u_sar)
     else:
         uvsg_1 = pd.DataFrame(columns=['File_Name'] + columns_to_sum_uvsg + additional_columns_uvsg + u_sar)
@@ -576,12 +601,9 @@ def main(params):
     else:
         uvsg = uvsg_merged.copy()
     
-    #################################### RAFM MANUAL #####################################
-    rafm_manual = pd.read_excel(rafm_manual_path, sheet_name = 'Sheet1',engine = 'openpyxl')
-    rafm_manual = rafm_manual.drop (columns = ['No','Update (Y/N)','Shift Dur','Cohort','C_sar'])
+    rafm_manual = pd.read_excel(rafm_manual_path, sheet_name='Sheet1', engine='openpyxl')
+    rafm_manual = rafm_manual.drop(columns=['No','Update (Y/N)','Shift Dur','Cohort','C_sar'])
     rafm_manual = rafm_manual.fillna(0)
-    rafm_manual # JADI SHEET RAFM MANUAL
-    ############################ HITUNG SUMMARYNYA ###############################
 
     final = code.copy()
     for col in cols_to_compare:
@@ -589,17 +611,21 @@ def main(params):
             final[col] = pd.NA
     logic_row = sign_logic.iloc[0]
 
-    mapping_code = global_filter_rafm.drop(columns = {'File Name'})
-    mapping = pd.concat([code_rafm,mapping_code], axis = 1)
-    mapping = mapping[~mapping['RAFM File Name'].astype(str).str.contains('_ori',regex = True, na = False)]
-    cf_rafm = cf_rafm.groupby('RAFM File Name', as_index = False).first()
-    global_filter_rafm = global_filter_rafm.rename(columns = {'File Name':'RAFM File Name'})
-    cf_rafm = pd.merge(global_filter_rafm,cf_rafm,on = 'RAFM File Name', how = 'left')
-    global_filter_uvsg = global_filter_uvsg.groupby('File Name', as_index = False).first()
-    global_filter_uvsg = global_filter_uvsg.rename(columns = {'File Name':'UVSG File Name'})
-    uvsg = pd.merge(uvsg,global_filter_uvsg,on = 'UVSG File Name', how = 'left')
+    mapping_code = global_filter_rafm.drop(columns={'File Name'})
+    mapping = pd.concat([code_rafm, mapping_code], axis=1)
+    mask = mapping['RAFM File Name'].astype(str).str.contains('_ori', regex=True, na=False)
+    mapping = mapping[~mask].copy()
+    
+    cf_rafm = cf_rafm.groupby('RAFM File Name', as_index=False).first()
+    global_filter_rafm = global_filter_rafm.rename(columns={'File Name':'RAFM File Name'})
+    cf_rafm = pd.merge(global_filter_rafm, cf_rafm, on='RAFM File Name', how='left')
+    
+    global_filter_uvsg = global_filter_uvsg.groupby('File Name', as_index=False).first()
+    global_filter_uvsg = global_filter_uvsg.rename(columns={'File Name':'UVSG File Name'})
+    uvsg = pd.merge(uvsg, global_filter_uvsg, on='UVSG File Name', how='left')
 
     valid_cols = [col for col in logic_row.index if col in cf_argo.columns]
+    
     def check_sign(val, logic_sign):
         if pd.isna(val):
             return 0
@@ -619,17 +645,20 @@ def main(params):
     for col in cf_argo.columns:
         if col not in check_sign_summary_row:
             check_sign_summary_row[col] = None
+    
     check_sign_summary = pd.DataFrame([check_sign_summary_row])[cf_argo.columns]
     cf_argo = pd.concat([cf_argo, check_sign_summary], ignore_index=True)
     check_sign_total = sum(val for val in check_sign_summary_row.values() if isinstance(val, (int, float)))
     cf_argo.loc[cf_argo.index[-1], 'ARGO File Name'] = check_sign_total
+    
     index_labels = list(range(1, len(cf_argo))) + ['check sign']
     cf_argo.insert(0, 'No', index_labels)
     cf_argo = pd.concat([cf_argo, sign_logic], ignore_index=True)
     cf_argo.loc[cf_argo.index[-1], 'ARGO File Name'] = 'Sign Logic'
-    index_labels_manual= list(range(1, len(rafm_manual)+1))
+    
+    index_labels_manual = list(range(1, len(rafm_manual)+1))
     rafm_manual.insert(0, 'No', index_labels_manual)
-    index_labels_final= list(range(1, len(final)+1))
+    index_labels_final = list(range(1, len(final)+1))
     final.insert(0, 'No', index_labels_final)
 
     control['check sign'] = ''
@@ -644,22 +673,22 @@ def main(params):
     if 'UVSG File Name' in uvsg.columns:
         last_3_cols = uvsg.columns[-4:].tolist()
         other_cols_uvsg = [col for col in uvsg.columns if col not in last_3_cols and col != 'UVSG File Name']
-        uvsg= uvsg[['UVSG File Name'] + last_3_cols + other_cols_uvsg]
+        uvsg = uvsg[['UVSG File Name'] + last_3_cols + other_cols_uvsg]
     
     index_labels_rafm = list(range(1, len(cf_rafm)+1))
     cf_rafm.insert(0, 'No', index_labels_rafm)
-    index_labels_uvsg= list(range(1, len(uvsg)+1))
+    index_labels_uvsg = list(range(1, len(uvsg)+1))
     uvsg.insert(0, 'No', index_labels_uvsg)
+    
     return {
-        'Control':control,
-        'Code':mapping,
+        'Control': control,
+        'Code': mapping,
         "CF ARGO AZTRAD": cf_argo,
         "RAFM Output AZTRAD": cf_rafm,
         "RAFM Output Manual": rafm_manual,
         "RAFM Output AZUL_PI": uvsg,
         "Checking Summary AZTRAD": final
     }
-
 
 
 if __name__ == '__main__':
