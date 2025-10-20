@@ -14,133 +14,99 @@ cols_to_compare = ['prm_inc','lrc_cl_ins','cov_units','dac_cov_units','lrc_cl_in
 target_sheets = ['extraction IDR', 'extraction USD']
 global_filter_rafm = None
 
-
 def parse_numeric_fast(val):
-    """
-    Fast numeric parser optimized for Excel data (value/text, no formulas)
-    Handles: numbers, text numbers, formatted numbers, accounting format
-    """
-    # Level 0: None/Empty (fastest check)
     if val is None or val == '':
         return None
-    
-    # Level 1: Already numeric - FAST PATH (most common)
     if isinstance(val, (int, float)):
         return float(val)
-    
-    # Level 2: String processing
+
     if isinstance(val, str):
         s = val.strip()
-        
-        if not s or s.lower() in ['none', 'nan', 'n/a', '-']:
+        if not s or s.lower() in ['none', 'nan', 'n/a', '-', '--']:
             return None
-        
-        # Try direct conversion (for clean "123.45")
+        s = s.replace('\xa0', '').replace(' ', '').replace('\u202f','')
+        s = s.replace('−', '-')
+        s = re.sub(r'[^\d,.\-()%]', '', s)
+        is_percent = s.endswith('%')
+        if is_percent:
+            s = s[:-1]
+        is_negative = False
+        if s.startswith('(') and s.endswith(')'):
+            is_negative = True
+            s = s[1:-1]
+
+        comma_count = s.count(',')
+        dot_count = s.count('.')
+
         try:
-            return float(s)
-        except ValueError:
-            pass
-        
-        # Process formatted strings
-        try:
-            # Remove spaces
-            s = s.replace('\xa0', '').replace(' ', '')
-            
-            # Percentage
-            is_percent = s.endswith('%')
-            if is_percent:
-                s = s[:-1]
-            
-            # Accounting format: (123.45) = -123.45
-            is_negative = False
-            if s.startswith('(') and s.endswith(')'):
-                is_negative = True
-                s = s[1:-1]
-            
-            # Separator detection
-            comma_count = s.count(',')
-            dot_count = s.count('.')
-            
-            # No separators
-            if comma_count == 0 and dot_count <= 1:
-                result = float(s)
-            # Only commas (thousands)
-            elif dot_count == 0 and comma_count > 0:
+            if comma_count > 1 and dot_count == 1 and s.rfind('.') > s.rfind(','):
                 result = float(s.replace(',', ''))
-            # Both separators
-            elif comma_count > 0 and dot_count > 0:
-                last_comma = s.rfind(',')
-                last_dot = s.rfind('.')
-                
-                if last_dot > last_comma:
-                    # US: 1,234.56
-                    result = float(s.replace(',', ''))
-                else:
-                    # EU: 1.234,56
-                    result = float(s.replace('.', '').replace(',', '.'))
-            # Multiple dots (EU thousands)
-            elif dot_count > 1:
+            elif comma_count == 1 and dot_count > 0 and s.rfind(',') > s.rfind('.'):
+                result = float(s.replace('.', '').replace(',', '.'))
+            elif dot_count == 0 and comma_count == 1:
+                result = float(s.replace(',', '.'))
+            elif dot_count > 1 and comma_count == 0:
                 result = float(s.replace('.', ''))
-            # Single comma
-            elif comma_count == 1:
-                comma_pos = s.find(',')
-                digits_after = len(s) - comma_pos - 1
-                
-                if digits_after == 2 and comma_pos <= 3:
-                    # Decimal: 12,34
-                    result = float(s.replace(',', '.'))
-                else:
-                    # Thousands: 1234,56
-                    result = float(s.replace(',', ''))
-            else:
+            elif comma_count == 0 and dot_count <= 1:
                 result = float(s)
-            
-            # Apply modifiers
+            else:
+                result = float(s.replace(',', '').replace('.', ''))
+
             if is_negative:
                 result = -result
             if is_percent:
-                result = result / 100.0
-            
+                result /= 100.0
+
             return result
-            
-        except (ValueError, AttributeError):
+
+        except ValueError:
             return None
-    
-    # Last resort
+
     try:
         return float(val)
     except:
         return None
 
-
 def process_argo_file(file_path):
-    """Optimized ARGO file processing with fast parser"""
     file_name_argo = os.path.splitext(os.path.basename(file_path))[0]
     
     try:
         wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
         sheet = wb['Sheet1']
         
-        # Load all data at once
         data = list(sheet.values)
         if not data:
             wb.close()
+            print(f"❌ File {file_name_argo} kosong")
             return {'File_Name': file_name_argo}
         
-        header = data[0]
-        col_index = {col: i for i, col in enumerate(header) if col in columns_to_sum_argo}
-        sums = {col: 0 for col in col_index}
+        header = [str(h).strip().lower() for h in data[0]]
+        col_index = {}
+        for col in columns_to_sum_argo:
+            try:
+                idx = header.index(col.lower())
+                col_index[col] = idx
+            except ValueError:
+                print(f"⚠️ Kolom '{col}' tidak ditemukan di file {file_name_argo}")
         
-        # Process rows with fast parser
-        for row in data[1:]:
+        sums = {col: 0 for col in col_index}
+        row_count = 0
+        parsed_count = {col: 0 for col in col_index}
+        skipped_count = {col: 0 for col in col_index}
+    
+        for row_idx, row in enumerate(data[1:], start=2):
+            row_count += 1
             for col, idx in col_index.items():
                 if idx < len(row):
-                    parsed_val = parse_numeric_fast(row[idx])
+                    val = row[idx]
+                    parsed_val = parse_numeric_fast(val)
                     if parsed_val is not None:
                         sums[col] += parsed_val
+                        parsed_count[col] += 1
+                    else:
+                        skipped_count[col] += 1
         
         wb.close()
-        
     except Exception as e:
         print(f"❌ Gagal proses {file_name_argo}: {e}")
         sums = {}
@@ -148,45 +114,46 @@ def process_argo_file(file_path):
     sums['File_Name'] = file_name_argo
     return sums
 
-
 def process_rafm_file(entry):
-    """Optimized RAFM file processing with fast parser"""
     file_path, file_name = entry
     total_sums = {col: 0 for col in columns_to_sum_rafm}
 
     try:
         wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
-        
-        for sheet_name in target_sheets:
+    except Exception as e:
+        print(f"❌ Tidak bisa membuka file {file_name}: {e}")
+        return {**total_sums, 'File_Name': file_name}
+
+    for sheet_name in target_sheets:
+        try:
             if sheet_name not in wb.sheetnames:
                 continue
 
             sheet = wb[sheet_name]
-            data = list(sheet.values)
-            if len(data) < 20:
-                continue
-            
-            # Find header
+            rows = sheet.iter_rows(values_only=True)
             header = None
-            data_start_idx = 0
-            for idx, raw in enumerate(data[:20]):
+            for _ in range(20):
+                raw = next(rows, [])
                 cleaned = [str(h).strip().lower() if h else '' for h in raw]
                 if 'goc' in cleaned:
                     header = cleaned
-                    data_start_idx = idx + 4  # Skip header + 3 rows
                     break
 
             if not header:
+                print(f"⚠️ Kolom 'GOC' tidak ditemukan dalam 20 baris pertama di sheet {sheet_name} file {file_name}, dilewati.")
                 continue
-
-            # Build column index
+            data_start = []
+            for _ in range(3):
+                peek = next(rows, [])
+                if any(peek):
+                    data_start = [peek]
+                    break
             col_index = {}
+            lower_targets = [c.lower() for c in columns_to_sum_rafm]
             for i, col in enumerate(header):
-                if col in [c.lower() for c in columns_to_sum_rafm]:
+                if col in lower_targets:
                     col_index[col] = i
-
-            # Process data rows
-            for row in data[data_start_idx:]:
+            for row in data_start + list(rows):
                 for col in columns_to_sum_rafm:
                     idx = col_index.get(col.lower())
                     if idx is not None and idx < len(row):
@@ -194,21 +161,19 @@ def process_rafm_file(entry):
                         if parsed_val is not None and parsed_val != 0:
                             total_sums[col] += parsed_val
 
-        wb.close()
+        except Exception as e:
+            print(f"   ❌ Error processing sheet {sheet_name} file {file_name}: {e}")
+            continue
 
-    except Exception as e:
-        print(f"   ❌ Error processing file {file_name}: {e}")
-
+    wb.close()
     total_sums['File_Name'] = file_name
     return total_sums
-
 
 def main(params):
     global columns_to_sum_argo, columns_to_sum_rafm, cols_to_compare, target_sheets
 
     input_excel = params['input excel']
 
-    # Read all sheets at once
     excel_file = pd.ExcelFile(input_excel)
     code = pd.read_excel(excel_file, sheet_name='Code')
     sign_logic = pd.read_excel(excel_file, sheet_name='Sign Logic')
@@ -222,7 +187,6 @@ def main(params):
     folder_path_rafm = path_map.get('rafm', '')
     rafm_manual_path = path_map.get('rafm manual', '')
 
-    # Process ARGO files
     file_paths_argo = [f for f in glob.glob(os.path.join(folder_path_argo, '*.xlsx')) 
                        if not os.path.basename(f).startswith('~$')]
     
@@ -243,8 +207,7 @@ def main(params):
     columns_to_drop = [col for col in ['RAFM File Name', 'UVSG File Name'] if col in cf_argo.columns]
     if columns_to_drop:
         cf_argo = cf_argo.drop(columns=columns_to_drop)
-    
-    # Process RAFM files
+
     file_paths_rafm = [f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx')) 
                        if not os.path.basename(f).startswith('~$')]
     file_entries = [(f, os.path.splitext(os.path.basename(f))[0]) for f in file_paths_rafm]

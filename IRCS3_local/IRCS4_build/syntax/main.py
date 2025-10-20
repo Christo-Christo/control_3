@@ -14,37 +14,26 @@ cols_to_sum_dict = {
     'reas': reas.cols_to_compare
 }
 
-
 def auto_adjust_column_width(worksheet, df_sheet, max_width=50, sample_size=100):
-    """
-    Auto-adjust column width dengan sampling untuk performa lebih cepat
-    """
     if not hasattr(df_sheet, 'columns'):
         return
     
     for i, col in enumerate(df_sheet.columns):
         try:
-            # Sample data untuk kalkulasi lebih cepat
             sample_data = df_sheet[col].head(sample_size).astype(str)
             
-            # Hitung max length dari sample
             max_len = max(
                 sample_data.str.len().max(),
                 len(str(col))
             )
-            
-            # Tambah padding dan batasi max width
+
             adjusted_width = min(max_len + 2, max_width)
             worksheet.set_column(i, i, adjusted_width)
         except Exception:
-            # Fallback ke lebar default
             worksheet.set_column(i, i, 12)
 
 
 def apply_number_formats(workbook, worksheet, df_sheet, sheet_name):
-    """
-    Apply number formats secara batch untuk performa lebih baik
-    """
     if sheet_name == 'Control':
         return
     
@@ -70,9 +59,6 @@ def apply_number_formats(workbook, worksheet, df_sheet, sheet_name):
 
 
 def write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, ncols):
-    """
-    Optimized formula writing untuk Checking Summary sheets
-    """
     if jenis == 'trad':
         cf_sheet = 'CF ARGO AZTRAD'
         rafm_sheet_1 = 'RAFM Output AZTRAD'
@@ -219,8 +205,6 @@ def process_input_file(file_path):
     os.makedirs(output_path, exist_ok=True)
     output_file = os.path.join(output_path, output_filename)
 
-    process_start_time = time.time()
-
     with pd.ExcelWriter(output_file, engine='xlsxwriter', 
                         engine_kwargs={'options': {'strings_to_numbers': False}}) as writer:
         workbook = writer.book
@@ -333,11 +317,9 @@ def process_input_file(file_path):
                             worksheet.write_formula(row_idx+1, col_idx, formula)
 
     print(f"✅ Output disimpan di: {output_file}")
-    print(f"⏱️ Waktu proses file: {time.time() - process_start_time:.2f} detik")
 
 
 def main(input_path):
-    """Main function dengan parallel processing optimization"""
     start_time = time.time()
 
     if os.path.isfile(input_path):

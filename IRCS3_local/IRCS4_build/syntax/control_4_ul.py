@@ -25,85 +25,62 @@ target_sheets = ['extraction_IDR', 'extraction_USD']
 global_filter_rafm = None
 all_runs = ['11', '21', '31', '41']
 
-
 def parse_numeric_fast(val):
-    """Fast numeric parser optimized for Excel data"""
     if val is None or val == '':
         return None
-    
     if isinstance(val, (int, float)):
         return float(val)
-    
+
     if isinstance(val, str):
         s = val.strip()
-        
-        if not s or s.lower() in ['none', 'nan', 'n/a', '-']:
+        if not s or s.lower() in ['none', 'nan', 'n/a', '-', '--']:
             return None
-        
+        s = s.replace('\xa0', '').replace(' ', '').replace('\u202f','')
+        s = s.replace('−', '-')
+        s = re.sub(r'[^\d,.\-()%]', '', s)
+        is_percent = s.endswith('%')
+        if is_percent:
+            s = s[:-1]
+        is_negative = False
+        if s.startswith('(') and s.endswith(')'):
+            is_negative = True
+            s = s[1:-1]
+
+        comma_count = s.count(',')
+        dot_count = s.count('.')
+
         try:
-            return float(s)
-        except ValueError:
-            pass
-        
-        try:
-            s = s.replace('\xa0', '').replace(' ', '')
-            
-            is_percent = s.endswith('%')
-            if is_percent:
-                s = s[:-1]
-            
-            is_negative = False
-            if s.startswith('(') and s.endswith(')'):
-                is_negative = True
-                s = s[1:-1]
-            
-            comma_count = s.count(',')
-            dot_count = s.count('.')
-            
-            if comma_count == 0 and dot_count <= 1:
-                result = float(s)
-            elif dot_count == 0 and comma_count > 0:
+            if comma_count > 1 and dot_count == 1 and s.rfind('.') > s.rfind(','):
                 result = float(s.replace(',', ''))
-            elif comma_count > 0 and dot_count > 0:
-                last_comma = s.rfind(',')
-                last_dot = s.rfind('.')
-                
-                if last_dot > last_comma:
-                    result = float(s.replace(',', ''))
-                else:
-                    result = float(s.replace('.', '').replace(',', '.'))
-            elif dot_count > 1:
+            elif comma_count == 1 and dot_count > 0 and s.rfind(',') > s.rfind('.'):
+                result = float(s.replace('.', '').replace(',', '.'))
+            elif dot_count == 0 and comma_count == 1:
+                result = float(s.replace(',', '.'))
+            elif dot_count > 1 and comma_count == 0:
                 result = float(s.replace('.', ''))
-            elif comma_count == 1:
-                comma_pos = s.find(',')
-                digits_after = len(s) - comma_pos - 1
-                
-                if digits_after == 2 and comma_pos <= 3:
-                    result = float(s.replace(',', '.'))
-                else:
-                    result = float(s.replace(',', ''))
-            else:
+            elif comma_count == 0 and dot_count <= 1:
                 result = float(s)
-            
+            else:
+                result = float(s.replace(',', '').replace('.', ''))
+
             if is_negative:
                 result = -result
             if is_percent:
-                result = result / 100.0
-            
+                result /= 100.0
+
             return result
-            
-        except (ValueError, AttributeError):
+
+        except ValueError:
             return None
-    
+
     try:
         return float(val)
     except:
         return None
 
-
 def process_argo_file(file_path):
-    """Optimized ARGO file processing with fast parser"""
     file_name_argo = os.path.splitext(os.path.basename(file_path))[0]
+    
     try:
         wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
         sheet = wb['Sheet1']
@@ -111,18 +88,35 @@ def process_argo_file(file_path):
         data = list(sheet.values)
         if not data:
             wb.close()
+            print(f"❌ File {file_name_argo} kosong")
             return {'File_Name': file_name_argo}
         
-        header = data[0]
-        col_index = {col: i for i, col in enumerate(header) if col in columns_to_sum_argo}
-        sums = {col: 0 for col in col_index}
+        header = [str(h).strip().lower() for h in data[0]]
+        col_index = {}
+        for col in columns_to_sum_argo:
+            try:
+                idx = header.index(col.lower())
+                col_index[col] = idx
+            except ValueError:
+                print(f"⚠️ Kolom '{col}' tidak ditemukan di file {file_name_argo}")
         
-        for row in data[1:]:
+        sums = {col: 0 for col in col_index}
+        row_count = 0
+        parsed_count = {col: 0 for col in col_index}
+        skipped_count = {col: 0 for col in col_index}
+    
+        for row_idx, row in enumerate(data[1:], start=2):
+            row_count += 1
             for col, idx in col_index.items():
                 if idx < len(row):
-                    parsed_val = parse_numeric_fast(row[idx])
+                    val = row[idx]
+                    parsed_val = parse_numeric_fast(val)
                     if parsed_val is not None:
                         sums[col] += parsed_val
+                        parsed_count[col] += 1
+                    else:
+                        skipped_count[col] += 1
+        
         wb.close()
     except Exception as e:
         print(f"❌ Gagal proses {file_name_argo}: {e}")
@@ -131,9 +125,7 @@ def process_argo_file(file_path):
     sums['File_Name'] = file_name_argo
     return sums
 
-
 def process_rafm_file(args):
-    """Optimized RAFM file processing with fast parser"""
     file_path, file_name, filter_df = args
     match = filter_df[filter_df['File Name'] == file_name]
     if match.empty:
@@ -231,7 +223,6 @@ def process_rafm_file(args):
 
 
 def main(params):
-    """Optimized main function"""
     global global_filter_rafm
 
     input_excel = params['input excel']

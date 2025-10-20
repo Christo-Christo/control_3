@@ -1,7 +1,7 @@
 from syntax.main import main
 import time
 
-input_path = r"P:\13. Employee Folder\Christo\control 4\Q3 25\input excel\input reas con.xlsx"
+input_path = r"P:\13. Employee Folder\Christo\control 4\Q3 25\input excel"
 
 if __name__ == "__main__":
     print("🚀 Starting program...")
