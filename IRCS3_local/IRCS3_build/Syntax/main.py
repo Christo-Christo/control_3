@@ -123,47 +123,81 @@ def run_single_config(config, product_type):
 
 def run_all_configurations(excel_path):
     print("="*60)
-    print("RUNNING ALL CONFIGURATIONS")
+    print("READING CONFIGURATIONS")
     print("="*60)
 
     trad_configs = read_filter_config(excel_path, 'FILTER_TRAD')
     ul_configs = read_filter_config(excel_path, 'FILTER_UL')
 
+    trad_run_names = [c.get('run_name', '') for c in trad_configs if c.get('run_name', '')]
+    ul_run_names = [c.get('run_name', '') for c in ul_configs if c.get('run_name', '')]
+    
+    total_runs = len(trad_run_names) + len(ul_run_names)
+    
+    print(f"\n📋 Total configurations to process: {total_runs}")
+    
+    if trad_run_names:
+        print(f"\n🔵 TRAD Configurations ({len(trad_run_names)}):")
+        for i, name in enumerate(trad_run_names, 1):
+            print(f"   {i}. {name}")
+    
+    if ul_run_names:
+        print(f"\n🟢 UL Configurations ({len(ul_run_names)}):")
+        for i, name in enumerate(ul_run_names, 1):
+            print(f"   {i}. {name}")
+    
+    print("\n" + "="*60)
+    print("STARTING PROCESSING")
+    print("="*60 + "\n")
+
     trad_results = {}
     ul_results = {}
-    max_workers = min(16, (os.cpu_count() or 4) * 2)
+
+    max_workers = max(16, (os.cpu_count() or 4) * 4)
+
+    completed = 0
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_type = {}
+        future_to_info = {}
 
         for config in trad_configs:
             run_name = config.get('run_name', '')
             if run_name:
                 future = executor.submit(run_single_config, config, 'TRAD')
-                future_to_type[future] = 'TRAD'
+                future_to_info[future] = {'type': 'TRAD', 'name': run_name}
 
         for config in ul_configs:
             run_name = config.get('run_name', '')
             if run_name:
                 future = executor.submit(run_single_config, config, 'UL')
-                future_to_type[future] = 'UL'
+                future_to_info[future] = {'type': 'UL', 'name': run_name}
 
-        for future in as_completed(future_to_type):
-            product_type = future_to_type[future]
+        for future in as_completed(future_to_info):
+            info = future_to_info[future]
+            product_type = info['type']
+            expected_name = info['name']
+            
             try:
                 run_name, result = future.result()
+                completed += 1
+                
                 if product_type == 'TRAD':
                     trad_results[run_name] = result
                 else:
                     ul_results[run_name] = result
 
                 if "error" in result:
-                    print(f"❌ {run_name} ({product_type}): {result['error']}")
+                    print(f"[{completed}/{total_runs}] ❌ {run_name} ({product_type}): {result['error']}")
                 else:
-                    print(f"✅ {run_name} ({product_type}): Completed successfully")
+                    print(f"[{completed}/{total_runs}] ✅ {run_name} ({product_type}): Completed")
 
             except Exception as e:
-                print(f"❌ Exception occurred while processing {product_type}: {str(e)}")
+                completed += 1
+                print(f"[{completed}/{total_runs}] ❌ {expected_name} ({product_type}): Exception - {str(e)}")
+
+    print("\n" + "="*60)
+    print(f"PROCESSING COMPLETED: {completed}/{total_runs} runs")
+    print("="*60)
 
     return trad_results, ul_results
 
@@ -194,6 +228,7 @@ def write_mapping_sheet(wb, excel_path, filter_df):
     
     for col_idx, col_name in enumerate(filter_df.columns):
         ws.write(0, col_idx, col_name, header_fmt)
+    
     for row_idx, row in filter_df.iterrows():
         for col_idx, value in enumerate(row):
             ws.write(row_idx + 1, col_idx, value, data_fmt)
