@@ -60,6 +60,7 @@ def parse_numeric_fast(val):
         return None
 
 def clean_numeric_column(df, column_name):
+    """Optimized: Try vectorized first, fallback to custom parsing"""
     df_processed, _ = make_columns_case_insensitive(df)
     column_lower = column_name.lower()
 
@@ -70,6 +71,13 @@ def clean_numeric_column(df, column_name):
     if not original_col:
         return df
 
+    try:
+        df[original_col] = pd.to_numeric(df[original_col], errors='coerce').fillna(0)
+        return df
+    except:
+        pass
+    
+    # Fallback to custom parsing
     col_data = df[original_col].astype(str).to_list()
 
     with ThreadPoolExecutor() as executor:
@@ -180,8 +188,6 @@ def apply_filters_dv(df, params):
             pattern = rf'(^|_){re.escape(produk_exc)}(_|$)'
             mask &= ~df_processed[goc_col].astype(str).str.contains(pattern, case=False, na=False)
 
-
-
     filtered_df = df_processed[mask].copy()
     filtered_df.columns = [column_mapping.get(col.lower(), col) for col in filtered_df.columns]
     return filtered_df
@@ -231,8 +237,6 @@ def apply_filters_rafm(df, params):
         for produk_exc in kecuali_produk:
             pattern = rf'(^|_){re.escape(produk_exc)}(_|$)'
             mask &= ~df_processed[goc_col].astype(str).str.contains(pattern, case=False, na=False)
-
-
 
     filtered_df = df_processed[mask].copy()
     filtered_df.columns = [column_mapping.get(col.lower(), col) for col in filtered_df.columns]
@@ -309,13 +313,14 @@ def run_trad(params):
         if not path_rafm or not os.path.isfile(path_rafm):
             return {"error": f"File RAFM tidak ditemukan atau path kosong: {path_rafm}"}
 
+        # Optimized: Load with appropriate method
         try:
-            dv_trad = pd.read_csv(path_dv)
-        except:
-            try:
+            if path_dv.endswith('.csv'):
+                dv_trad = pd.read_csv(path_dv, low_memory=False)
+            else:
                 dv_trad = pd.read_excel(path_dv, engine='openpyxl')
-            except Exception as e:
-                return {"error": f"Gagal membaca file DV: {str(e)}"}
+        except Exception as e:
+            return {"error": f"Gagal membaca file DV: {str(e)}"}
                 
         dv_trad_processed, dv_column_mapping = make_columns_case_insensitive(dv_trad)
         
@@ -427,8 +432,12 @@ def run_trad(params):
             )
             dv_trad_total.loc[usd_mask, sum_assd_column] *= usd_rate
 
-        run_rafm_idr = load_excel_sheet_safely(path_rafm, 'extraction_IDR', ['GOC', 'period', 'cov_units', 'pol_b'])
-        run_rafm_usd = load_excel_sheet_safely(path_rafm, 'extraction_USD', ['GOC', 'period', 'cov_units', 'pol_b'])
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_idr = executor.submit(load_excel_sheet_safely, path_rafm, 'extraction_IDR', ['GOC', 'period', 'cov_units', 'pol_b'])
+            future_usd = executor.submit(load_excel_sheet_safely, path_rafm, 'extraction_USD', ['GOC', 'period', 'cov_units', 'pol_b'])
+            
+            run_rafm_idr = future_idr.result()
+            run_rafm_usd = future_usd.result()
 
         if not run_rafm_idr.empty:
             run_rafm_idr = run_rafm_idr[run_rafm_idr['period'].astype(str) == '0']
@@ -573,14 +582,13 @@ def run_ul(params):
         if not path_rafm or not os.path.isfile(path_rafm):
             return {"error": f"File RAFM tidak ditemukan atau path kosong: {path_rafm}"}
 
-        # Load DV data
         try:
-            dv_ul = pd.read_csv(path_dv)
-        except:
-            try:
+            if path_dv.endswith('.csv'):
+                dv_ul = pd.read_csv(path_dv, low_memory=False)
+            else:
                 dv_ul = pd.read_excel(path_dv, engine='openpyxl')
-            except Exception as e:
-                return {"error": f"Gagal membaca file DV: {str(e)}"}
+        except Exception as e:
+            return {"error": f"Gagal membaca file DV: {str(e)}"}
         
         if dv_ul.empty:
             return {"error": "File DV kosong atau tidak dapat dibaca"}
@@ -656,8 +664,12 @@ def run_ul(params):
             )
             dv_ul_total.loc[usd_mask, total_fund_column] *= usd_rate
 
-        run_rafm_idr = load_excel_sheet_safely(path_rafm, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
-        run_rafm_usd = load_excel_sheet_safely(path_rafm, 'extraction_USD', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_idr = executor.submit(load_excel_sheet_safely, path_rafm, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
+            future_usd = executor.submit(load_excel_sheet_safely, path_rafm, 'extraction_USD', ['GOC', 'period', 'pol_b', 'RV_AV_IF'])
+            
+            run_rafm_idr = future_idr.result()
+            run_rafm_usd = future_usd.result()
         
         if not run_rafm_idr.empty:
             run_rafm_idr = run_rafm_idr[run_rafm_idr['period'].astype(str) == '0']
@@ -686,8 +698,12 @@ def run_ul(params):
         run_uvsg = pd.DataFrame()
         if path_uvsg and os.path.isfile(path_uvsg):
             print(f"Loading UVSG file: {path_uvsg}")
-            run_uvsg_idr = load_excel_sheet_safely(path_uvsg, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'rv_av_if'])
-            run_uvsg_usd = load_excel_sheet_safely(path_uvsg, 'extraction_USD', ['GOC', 'period', 'pol_b', 'rv_av_if'])
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_uvsg_idr = executor.submit(load_excel_sheet_safely, path_uvsg, 'extraction_IDR', ['GOC', 'period', 'pol_b', 'rv_av_if'])
+                future_uvsg_usd = executor.submit(load_excel_sheet_safely, path_uvsg, 'extraction_USD', ['GOC', 'period', 'pol_b', 'rv_av_if'])
+                
+                run_uvsg_idr = future_uvsg_idr.result()
+                run_uvsg_usd = future_uvsg_usd.result()
             
             if not run_uvsg_idr.empty:
                 run_uvsg_idr = run_uvsg_idr[run_uvsg_idr['period'].astype(str) == '0']
@@ -701,8 +717,7 @@ def run_ul(params):
             if not run_uvsg.empty:
                 with ThreadPoolExecutor() as executor:
                     executor.map(lambda col: clean_numeric_column(run_uvsg, col), ['pol_b', 'rv_av_if'])                
-                
-                # Find and standardize GOC column in UVSG
+
                 goc_col_uvsg = None
                 for col in run_uvsg.columns:
                     if col.lower() == 'goc':

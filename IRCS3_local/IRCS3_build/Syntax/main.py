@@ -56,15 +56,10 @@ def get_output_file_paths(excel_path):
         print(f"❌ Error getting output paths: {e}")
         return None, None
 
-def safe_get_dict(d, key):
-    val = d.get(key)
-    return val if isinstance(val, dict) else {}
-
 def normalize_filter_params(params):
     return {k.lower(): v for k, v in params.items()}
 
 def read_filter_config(excel_path, sheet_name):
-    import pandas as pd
     df = pd.read_excel(excel_path, sheet_name=sheet_name, dtype=str)
     df = df.fillna('') 
     df.columns = df.columns.str.strip()
@@ -136,8 +131,8 @@ def run_all_configurations(excel_path):
 
     trad_results = {}
     ul_results = {}
-
-    max_workers = max(8, (os.cpu_count() or 1) * 4)
+    max_workers = min(16, (os.cpu_count() or 4) * 2)
+    
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_type = {}
 
@@ -190,7 +185,22 @@ def convert_trad_result_to_standard(result):
         ]
     }
 
-def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
+def write_mapping_sheet(wb, excel_path, filter_df):
+    ws = wb.add_worksheet('Mapping')
+    ws.set_column(0, len(filter_df.columns)-1, 20)
+    
+    header_fmt = wb.add_format({'bold': True, 'bg_color': '#4472C4', 'font_color': 'white', 'border': 1})
+    data_fmt = wb.add_format({'border': 1})
+    
+    for col_idx, col_name in enumerate(filter_df.columns):
+        ws.write(0, col_idx, col_name, header_fmt)
+    for row_idx, row in filter_df.iterrows():
+        for col_idx, value in enumerate(row):
+            ws.write(row_idx + 1, col_idx, value, data_fmt)
+    
+    return ws
+
+def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig, excel_path):
     wb = xlsxwriter.Workbook(input_config.output_trad, {'nan_inf_to_errors': True})
     number_format = '_(* #,##0_);_(* (#,##0)_);_(* "-"_);_(@_)'
     total_run = len(input_config.tradfilter)
@@ -239,26 +249,19 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
         
         ws.write(row, 0, run_name, yellow)
         
-        # === DV (kolom 1) ===
         ws.write_formula(row, 1, f'=SUM(C{row+1}:F{row+1})',border_number)
-
-        # === RAFM (kolom 6) ===
         ws.write_formula(row, 6, f'=SUM(H{row+1}:K{row+1})', border_number)
-
-        # === Differences (kolom 11–15) ===
         ws.write_formula(row, 11, f'=B{row+1}-G{row+1}', border_number)
         ws.write_formula(row, 12, f'=C{row+1}-H{row+1}', border_number)
         ws.write_formula(row, 13, f'=D{row+1}-I{row+1}', border_number)
         ws.write_formula(row, 14, f'=E{row+1}-J{row+1}', border_number)
         ws.write_formula(row, 15, f'=F{row+1}-K{row+1}', border_number)
 
-        # === DV Detail (kolom 2–5) ===
         ws.write_formula(row, 2, f"='{run_name}'!C5 + '{run_name}'!K4", border_number)
         ws.write_formula(row, 3, f"='{run_name}'!S4", border_number)
         ws.write_formula(row, 4, f"='{run_name}'!AA4", border_number)
         ws.write_formula(row, 5, f"='{run_name}'!AI4", border_number)
 
-        # === RAFM Detail (kolom 7–10) ===
         ws.write_formula(row, 7, f"='{run_name}'!E5 + '{run_name}'!M4", border_number)
         ws.write_formula(row, 8, f"='{run_name}'!U4", border_number)
         ws.write_formula(row, 9, f"='{run_name}'!AC4", border_number)
@@ -280,30 +283,29 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
         
         ws.write(row, 0, run_name, yellow)
         
-        # === DV (kolom 1) ===
         ws.write_formula(row, 1, f'=SUM(C{row+1}:F{row+1})',border_number)
-
-        # === RAFM (kolom 6) ===
         ws.write_formula(row, 6, f'=SUM(H{row+1}:K{row+1})', border_number)
-
-        # === Differences (kolom 11–15) ===
         ws.write_formula(row, 11, f'=B{row+1}-G{row+1}', border_number)
         ws.write_formula(row, 12, f'=C{row+1}-H{row+1}', border_number)
         ws.write_formula(row, 13, f'=D{row+1}-I{row+1}', border_number)
         ws.write_formula(row, 14, f'=E{row+1}-J{row+1}', border_number)
         ws.write_formula(row, 15, f'=F{row+1}-K{row+1}', border_number)
 
-        # === DV Detail (kolom 2–5) ===
         ws.write_formula(row, 2, f"='{run_name}'!D5 + '{run_name}'!L4", border_number)
         ws.write_formula(row, 3, f"='{run_name}'!T4", border_number)
         ws.write_formula(row, 4, f"='{run_name}'!AB4", border_number)
         ws.write_formula(row, 5, f"='{run_name}'!AJ4", border_number)
 
-        # === RAFM Detail (kolom 7–10) ===
         ws.write_formula(row, 7, f"='{run_name}'!F5 + '{run_name}'!N4", border_number)
         ws.write_formula(row, 8, f"='{run_name}'!V4", border_number)
         ws.write_formula(row, 9, f"='{run_name}'!AD4", border_number)
         ws.write_formula(row, 10, f"='{run_name}'!AL4", border_number)
+
+    try:
+        filter_trad_df = pd.read_excel(excel_path, sheet_name='FILTER_TRAD')
+        write_mapping_sheet(wb, excel_path, filter_trad_df)
+    except Exception as e:
+        print(f"⚠️ Warning: Could not add Mapping sheet to TRAD output: {e}")
 
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')
@@ -311,9 +313,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
     header_diff_tablerow = ['GOC', 'DV # of Policies', 'DV SA', 'RAFM # of Policies', 'RAFM SA', 'Diff # of Policies', 'Diff SA']
     tablecol_fmt = wb.add_format({'bold': True, 'underline': True, 'bg_color':'#92D050'})
     fmt_number = wb.add_format({'num_format': number_format})
-
     summary_number_fmt = wb.add_format({'num_format': number_format, 'bg_color': '#92D050', 'bold': True})
-    
     data_bold_fmt = wb.add_format({'bold': True})
     data_number_fmt = wb.add_format({'num_format': number_format})
 
@@ -361,12 +361,7 @@ def write_trad_results_to_excel(trad_results, input_config: InputSheetConfig):
                 for row in range(len(summary)):
                     for c, item in enumerate(summary.iloc[row]):
                         value = item if not (pd.isna(item) or item == '') else 0
-                        ws.write(
-                            3 + row,
-                            col_starts[idx] + 1 + c,
-                            value,
-                            summary_number_fmt
-                        )
+                        ws.write(3 + row, col_starts[idx] + 1 + c, value, summary_number_fmt)
 
             if df is not None and not df.empty:
                 for row in range(len(df)):
@@ -416,7 +411,7 @@ def convert_ul_result_to_standard(result):
         ]
     }
 
-def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
+def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig, excel_path):
     wb = xlsxwriter.Workbook(input_config.output_ul, {'nan_inf_to_errors': True})
     number_format = '_(* #,##0_);_(* (#,##0)_);_(* "-"_);_(@_)'
     total_run = len(input_config.ulfilter)
@@ -436,6 +431,7 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
     center_merge = wb.add_format({'bold': True, 'align': 'center'})
     border_number = wb.add_format({'num_format': number_format, 'border': 1})
     fmt_number = wb.add_format({'num_format': number_format})
+    
     ws.write(0, 0, 'Valuation Year', bold)
     ws.write(1, 0, 'Valuation Month', bold)
     ws.write(2, 0, 'FX Rate ValDate', bold)
@@ -498,6 +494,12 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
         ws.write_formula(row, 5, f"='{run_name}'!F5", border_number)
         ws.write_formula(row, 6, f"='{run_name}'!N4", border_number)
 
+    try:
+        filter_ul_df = pd.read_excel(excel_path, sheet_name='FILTER_UL')
+        write_mapping_sheet(wb, excel_path, filter_ul_df)
+    except Exception as e:
+        print(f"⚠️ Warning: Could not add Mapping sheet to UL output: {e}")
+
     wb.add_worksheet('Diff Breakdown')
     wb.add_worksheet('>>')
 
@@ -536,13 +538,13 @@ def write_ul_results_to_excel(ul_results, input_config: InputSheetConfig):
                 formula = f"={col_letter}6-{col_plus_8}4"
                 ws.write_formula(1, col, formula, fmt_number)
 
-
             for idx in range(max_len):
                 df = df_list[idx] if idx < len(df_list) else None
                 summary = sum_list[idx] if idx < len(sum_list) else None
 
                 if (df is None or df.empty) and (summary is None or summary.empty):
                     continue
+                    
                 ws.set_column(col_starts[idx], col_starts[idx] + 6, 20)
                 ws.set_column(col_starts[idx], col_starts[idx], 40)
 
@@ -661,15 +663,15 @@ def main(input_sheet_path):
         output_folder = os.path.dirname(input_config.output_trad)
         os.makedirs(output_folder, exist_ok=True)
         print(f"\n📤 Output path trad: {input_config.output_trad}")
-        write_trad_results_to_excel(trad_results, input_config)
+        write_trad_results_to_excel(trad_results, input_config, input_sheet_path)
 
     def write_ul_wrapper():
         output_folder = os.path.dirname(input_config.output_ul)
         os.makedirs(output_folder, exist_ok=True)
         print(f"\n📤 Output path ul: {input_config.output_ul}")
-        write_ul_results_to_excel(ul_results, input_config)
+        write_ul_results_to_excel(ul_results, input_config, input_sheet_path)
 
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         futures = []
         if trad_results:
             futures.append(executor.submit(write_trad_wrapper))
@@ -686,5 +688,8 @@ def main(input_sheet_path):
     elapsed = time.time() - start_time
     formatted = str(datetime.timedelta(seconds=int(elapsed)))
     print(f"\n⏱️ Total runtime: {formatted}")
+    print("="*60)
+    print("✅ PROCESS COMPLETED SUCCESSFULLY")
+    print("="*60)
 
     return True
