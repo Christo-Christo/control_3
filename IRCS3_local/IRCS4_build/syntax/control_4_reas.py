@@ -4,6 +4,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 import re
 from openpyxl import load_workbook
+import numpy as np
 
 columns_to_sum_argo = [
     'prm_inc','lrc_cl_ins','lrc_cl_inv','r_exp_m','r_acq_cost','cov_units','DAC_COV_UNITS','dac','exp_acq',
@@ -14,18 +15,24 @@ cols_to_compare = ['prm_inc','lrc_cl_ins','cov_units','dac_cov_units','lrc_cl_in
 target_sheets = ['extraction IDR', 'extraction USD']
 global_filter_rafm = None
 
+_numeric_cache = {}
+
 def parse_numeric_fast(val):
     if val is None or val == '':
         return None
     if isinstance(val, (int, float)):
         return float(val)
+    
+    cache_key = val if isinstance(val, str) and len(str(val)) < 50 else None
+    if cache_key and cache_key in _numeric_cache:
+        return _numeric_cache[cache_key]
 
     if isinstance(val, str):
         s = val.strip()
         if not s or s.lower() in ['none', 'nan', 'n/a', '-', '--']:
             return None
         s = s.replace('\xa0', '').replace(' ', '').replace('\u202f','')
-        s = s.replace('−', '-')
+        s = s.replace('âˆ', '-')
         s = re.sub(r'[^\d,.\-()%]', '', s)
         is_percent = s.endswith('%')
         if is_percent:
@@ -56,6 +63,9 @@ def parse_numeric_fast(val):
                 result = -result
             if is_percent:
                 result /= 100.0
+            
+            if cache_key and len(_numeric_cache) < 10000:
+                _numeric_cache[cache_key] = result
 
             return result
 
@@ -71,48 +81,29 @@ def process_argo_file(file_path):
     file_name_argo = os.path.splitext(os.path.basename(file_path))[0]
     
     try:
-        wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
-        sheet = wb['Sheet1']
+        df = pd.read_excel(file_path, sheet_name='Sheet1', engine='openpyxl', dtype=str)
         
-        data = list(sheet.values)
-        if not data:
-            wb.close()
-            print(f"❌ File {file_name_argo} kosong")
+        if df.empty:
             return {'File_Name': file_name_argo}
         
-        header = [str(h).strip().lower() for h in data[0]]
-        col_index = {}
-        for col in columns_to_sum_argo:
-            try:
-                idx = header.index(col.lower())
-                col_index[col] = idx
-            except ValueError:
-                print(f"⚠️ Kolom '{col}' tidak ditemukan di file {file_name_argo}")
+        df.columns = df.columns.str.strip().str.lower()
         
-        sums = {col: 0 for col in col_index}
-        row_count = 0
-        parsed_count = {col: 0 for col in col_index}
-        skipped_count = {col: 0 for col in col_index}
-    
-        for row_idx, row in enumerate(data[1:], start=2):
-            row_count += 1
-            for col, idx in col_index.items():
-                if idx < len(row):
-                    val = row[idx]
-                    parsed_val = parse_numeric_fast(val)
-                    if parsed_val is not None:
-                        sums[col] += parsed_val
-                        parsed_count[col] += 1
-                    else:
-                        skipped_count[col] += 1
+        available_cols = [col for col in columns_to_sum_argo if col.lower() in df.columns]
         
-        wb.close()
+        if not available_cols:
+            return {'File_Name': file_name_argo}
+        
+        sums = {}
+        for col in available_cols:
+            df[col] = df[col].apply(parse_numeric_fast)
+            sums[col] = df[col].sum(skipna=True)
+        
+        sums['File_Name'] = file_name_argo
+        return sums
+        
     except Exception as e:
         print(f"❌ Gagal proses {file_name_argo}: {e}")
-        sums = {}
-    
-    sums['File_Name'] = file_name_argo
-    return sums
+        return {'File_Name': file_name_argo}
 
 def process_rafm_file(entry):
     file_path, file_name = entry
@@ -121,7 +112,6 @@ def process_rafm_file(entry):
     try:
         wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
     except Exception as e:
-        print(f"❌ Tidak bisa membuka file {file_name}: {e}")
         return {**total_sums, 'File_Name': file_name}
 
     for sheet_name in target_sheets:
@@ -140,19 +130,21 @@ def process_rafm_file(entry):
                     break
 
             if not header:
-                print(f"⚠️ Kolom 'GOC' tidak ditemukan dalam 20 baris pertama di sheet {sheet_name} file {file_name}, dilewati.")
                 continue
+            
             data_start = []
             for _ in range(3):
                 peek = next(rows, [])
                 if any(peek):
                     data_start = [peek]
                     break
+            
             col_index = {}
             lower_targets = [c.lower() for c in columns_to_sum_rafm]
             for i, col in enumerate(header):
                 if col in lower_targets:
                     col_index[col] = i
+            
             for row in data_start + list(rows):
                 for col in columns_to_sum_rafm:
                     idx = col_index.get(col.lower())
@@ -161,8 +153,7 @@ def process_rafm_file(entry):
                         if parsed_val is not None and parsed_val != 0:
                             total_sums[col] += parsed_val
 
-        except Exception as e:
-            print(f"   ❌ Error processing sheet {sheet_name} file {file_name}: {e}")
+        except Exception:
             continue
 
     wb.close()
@@ -190,14 +181,15 @@ def main(params):
     file_paths_argo = [f for f in glob.glob(os.path.join(folder_path_argo, '*.xlsx')) 
                        if not os.path.basename(f).startswith('~$')]
     
-    optimal_workers = min(os.cpu_count() or 4, max(len(file_paths_argo), 1))
+    optimal_workers = min(os.cpu_count() or 4, len(file_paths_argo)) if file_paths_argo else 1
     
     with ProcessPoolExecutor(max_workers=optimal_workers) as executor:
         summary_rows_argo = list(filter(None, executor.map(process_argo_file, file_paths_argo)))
 
     cf_argo = pd.DataFrame(summary_rows_argo)
-    cf_argo = cf_argo[['File_Name'] + [col for col in cf_argo.columns if col != 'File_Name']]
-    cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name', 'DAC_COV_UNITS': 'dac_cov_units'})
+    if not cf_argo.empty:
+        cf_argo = cf_argo[['File_Name'] + [col for col in cf_argo.columns if col != 'File_Name']]
+        cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name', 'DAC_COV_UNITS': 'dac_cov_units'})
     
     mask = code['RAFM File Name'].astype(str).str.contains('_ori', regex=True, na=False)
     code = code[~mask].copy()
