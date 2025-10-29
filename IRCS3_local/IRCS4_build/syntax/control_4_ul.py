@@ -25,24 +25,18 @@ target_sheets = ['extraction_IDR', 'extraction_USD']
 global_filter_rafm = None
 all_runs = ['11', '21', '31', '41']
 
-_numeric_cache = {}
-
 def parse_numeric_fast(val):
     if val is None or val == '':
         return None
     if isinstance(val, (int, float)):
         return float(val)
-    
-    cache_key = val if isinstance(val, str) and len(str(val)) < 50 else None
-    if cache_key and cache_key in _numeric_cache:
-        return _numeric_cache[cache_key]
 
     if isinstance(val, str):
         s = val.strip()
         if not s or s.lower() in ['none', 'nan', 'n/a', '-', '--']:
             return None
         s = s.replace('\xa0', '').replace(' ', '').replace('\u202f','')
-        s = s.replace('âˆ', '-')
+        s = s.replace('−', '-')
         s = re.sub(r'[^\d,.\-()%]', '', s)
         is_percent = s.endswith('%')
         if is_percent:
@@ -74,9 +68,6 @@ def parse_numeric_fast(val):
             if is_percent:
                 result /= 100.0
 
-            if cache_key and len(_numeric_cache) < 10000:
-                _numeric_cache[cache_key] = result
-
             return result
 
         except ValueError:
@@ -91,29 +82,48 @@ def process_argo_file(file_path):
     file_name_argo = os.path.splitext(os.path.basename(file_path))[0]
     
     try:
-        df = pd.read_excel(file_path, sheet_name='Sheet1', engine='openpyxl', dtype=str)
+        wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
+        sheet = wb['Sheet1']
         
-        if df.empty:
+        data = list(sheet.values)
+        if not data:
+            wb.close()
+            print(f"❌ File {file_name_argo} kosong")
             return {'File_Name': file_name_argo}
         
-        df.columns = df.columns.str.strip().str.lower()
+        header = [str(h).strip().lower() for h in data[0]]
+        col_index = {}
+        for col in columns_to_sum_argo:
+            try:
+                idx = header.index(col.lower())
+                col_index[col] = idx
+            except ValueError:
+                print(f"⚠️ Kolom '{col}' tidak ditemukan di file {file_name_argo}")
         
-        available_cols = [col for col in columns_to_sum_argo if col.lower() in df.columns]
+        sums = {col: 0 for col in col_index}
+        row_count = 0
+        parsed_count = {col: 0 for col in col_index}
+        skipped_count = {col: 0 for col in col_index}
+    
+        for row_idx, row in enumerate(data[1:], start=2):
+            row_count += 1
+            for col, idx in col_index.items():
+                if idx < len(row):
+                    val = row[idx]
+                    parsed_val = parse_numeric_fast(val)
+                    if parsed_val is not None:
+                        sums[col] += parsed_val
+                        parsed_count[col] += 1
+                    else:
+                        skipped_count[col] += 1
         
-        if not available_cols:
-            return {'File_Name': file_name_argo}
-        
-        sums = {}
-        for col in available_cols:
-            df[col] = df[col].apply(parse_numeric_fast)
-            sums[col] = df[col].sum(skipna=True)
-        
-        sums['File_Name'] = file_name_argo
-        return sums
-        
+        wb.close()
     except Exception as e:
         print(f"❌ Gagal proses {file_name_argo}: {e}")
-        return {'File_Name': file_name_argo}
+        sums = {}
+    
+    sums['File_Name'] = file_name_argo
+    return sums
 
 def process_rafm_file(args):
     file_path, file_name, filter_df = args
@@ -235,7 +245,7 @@ def main(params):
         if not os.path.basename(f).startswith('~')
     ]
 
-    optimal_workers = min(os.cpu_count() or 4, len(file_paths_argo)) if file_paths_argo else 1
+    optimal_workers = min(os.cpu_count() or 4, max(len(file_paths_argo), 1))
 
     with ProcessPoolExecutor(max_workers=optimal_workers) as executor:
         summary_rows_argo = list(executor.map(process_argo_file, file_paths_argo))
