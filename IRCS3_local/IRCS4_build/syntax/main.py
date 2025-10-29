@@ -59,14 +59,6 @@ def apply_number_formats(workbook, worksheet, df_sheet, sheet_name):
 
 
 def write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, ncols):
-    """
-    Menulis formula di sheet Checking Summary sesuai jenis file:
-      - trad : mulai dari kolom E2
-      - ul   : mulai dari kolom D2
-      - reas : mulai dari kolom D2
-    Formula mengikuti semua baris dan kolom yang ada,
-    menggunakan nama sheet sesuai logika lama.
-    """
 
     # Nama sheet sesuai logika lama
     sheet_names = {
@@ -94,32 +86,60 @@ def write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, n
         # Kolom mulai berbeda untuk trad / ul / reas
         if jenis == 'trad':
             start_col_idx = 4  # E (0-based index)
-        else:
+            # Offset kolom di sheet sumber (trad: CF ARGO kolom ke-3 = C, RAFM kolom ke-7 = G, dll)
+            cf_argo_col_offset = 2  # kolom C (index 2)
+            cf_rafm_col_offset = 6  # kolom G (index 6)
+            rafm_manual_col_offset = 2  # kolom C (index 2)
+            uvsg_col_offset = 6  # kolom G (index 6)
+        elif jenis == 'ul':
             start_col_idx = 3  # D (0-based index)
+            cf_argo_col_offset = 2  # kolom C (index 2)
+            cf_rafm_col_offset = 5  # kolom F (index 5)
+            rafm_manual_col_offset = 2  # kolom C (index 2)
+        else:  # reas
+            start_col_idx = 3  # D (0-based index)
+            cf_argo_col_offset = 2  # kolom C (index 2)
+            cf_rafm_col_offset = 2  # kolom C (index 2)
+            rafm_manual_col_offset = 2  # kolom C (index 2)
 
         for col_idx in range(start_col_idx, ncols):
-            col_letter = xl_col_to_name(col_idx)
-
+            # Hitung offset relatif dari kolom mulai
+            relative_offset = col_idx - start_col_idx
+            
+            # Kolom di sheet sumber bergerak sesuai offset
             if jenis == 'trad':
+                cf_argo_col = xl_col_to_name(cf_argo_col_offset + relative_offset)
+                cf_rafm_col = xl_col_to_name(cf_rafm_col_offset + relative_offset)
+                rafm_manual_col = xl_col_to_name(rafm_manual_col_offset + relative_offset)
+                uvsg_col = xl_col_to_name(uvsg_col_offset + relative_offset)
+                
                 formula = (
-                    f"='{sheet_names['trad']['cf_argo']}'!C{row_excel}"
-                    f"-'{sheet_names['trad']['cf_rafm']}'!G{row_excel}"
-                    f"+'{sheet_names['trad']['rafm_manual']}'!C{row_excel}"
-                    f"-'{sheet_names['trad']['uvsg']}'!G{row_excel}"
+                    f"='{sheet_names['trad']['cf_argo']}'!{cf_argo_col}{row_excel}"
+                    f"-'{sheet_names['trad']['cf_rafm']}'!{cf_rafm_col}{row_excel}"
+                    f"+'{sheet_names['trad']['rafm_manual']}'!{rafm_manual_col}{row_excel}"
+                    f"-'{sheet_names['trad']['uvsg']}'!{uvsg_col}{row_excel}"
                 )
 
             elif jenis == 'ul':
+                cf_argo_col = xl_col_to_name(cf_argo_col_offset + relative_offset)
+                cf_rafm_col = xl_col_to_name(cf_rafm_col_offset + relative_offset)
+                rafm_manual_col = xl_col_to_name(rafm_manual_col_offset + relative_offset)
+                
                 formula = (
-                    f"='{sheet_names['ul']['cf_argo']}'!C{row_excel}"
-                    f"-'{sheet_names['ul']['cf_rafm']}'!F{row_excel}"
-                    f"-'{sheet_names['ul']['rafm_manual']}'!C{row_excel}"
+                    f"='{sheet_names['ul']['cf_argo']}'!{cf_argo_col}{row_excel}"
+                    f"-'{sheet_names['ul']['cf_rafm']}'!{cf_rafm_col}{row_excel}"
+                    f"-'{sheet_names['ul']['rafm_manual']}'!{rafm_manual_col}{row_excel}"
                 )
 
             elif jenis == 'reas':
+                cf_argo_col = xl_col_to_name(cf_argo_col_offset + relative_offset)
+                cf_rafm_col = xl_col_to_name(cf_rafm_col_offset + relative_offset)
+                rafm_manual_col = xl_col_to_name(rafm_manual_col_offset + relative_offset)
+                
                 formula = (
-                    f"='{sheet_names['reas']['cf_argo']}'!C{row_excel}"
-                    f"-'{sheet_names['reas']['cf_rafm']}'!C{row_excel}"
-                    f"+'{sheet_names['reas']['rafm_manual']}'!C{row_excel}"
+                    f"='{sheet_names['reas']['cf_argo']}'!{cf_argo_col}{row_excel}"
+                    f"-'{sheet_names['reas']['cf_rafm']}'!{cf_rafm_col}{row_excel}"
+                    f"+'{sheet_names['reas']['rafm_manual']}'!{rafm_manual_col}{row_excel}"
                 )
 
             worksheet.write_formula(row_idx, col_idx, formula)
