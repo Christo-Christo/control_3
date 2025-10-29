@@ -217,8 +217,11 @@ def main(params):
 
     summary_rows_rafm = [result for result in results if result]
 
-    cf_rafm_1 = summary_rows_rafm.copy()
-    cf_rafm_1 = cf_rafm_1[['File_Name'] + [col for col in cf_rafm_1.columns if col != 'File_Name']]
+    cf_rafm_1 = pd.DataFrame(summary_rows_rafm)
+
+    if not cf_rafm_1.empty and 'File_Name' in cf_rafm_1.columns:
+        cols = ['File_Name'] + [col for col in cf_rafm_1.columns if col != 'File_Name']
+        cf_rafm_1 = cf_rafm_1[cols]
     cf_rafm_1 = cf_rafm_1.rename(columns={'File_Name': 'RAFM File Name'})
     cf_rafm_1 = cf_rafm_1.groupby('RAFM File Name', as_index=False).first()
     cf_rafm_merge = pd.merge(code, cf_rafm_1, on="RAFM File Name", how="left").fillna(0)

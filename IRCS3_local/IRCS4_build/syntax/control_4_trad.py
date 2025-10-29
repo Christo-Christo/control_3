@@ -464,9 +464,11 @@ def main(params):
         combined_row = {**main_row, **add_row, **csar_row}
         combined_summary.append(combined_row)
 
-    cf_rafm_1 = combined_summary.copy()
-    cols = ['File_Name'] + [col for col in cf_rafm_1.columns if col != 'File_Name']
-    cf_rafm_1 = cf_rafm_1[cols]
+    cf_rafm_1 = pd.DataFrame(combined_summary)
+
+    if not cf_rafm_1.empty and 'File_Name' in cf_rafm_1.columns:
+        cols = ['File_Name'] + [col for col in cf_rafm_1.columns if col != 'File_Name']
+        cf_rafm_1 = cf_rafm_1[cols]
 
     code_rafm = code.copy()
     if 'UVSG File Name' in code_rafm.columns:

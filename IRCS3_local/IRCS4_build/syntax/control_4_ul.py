@@ -284,10 +284,10 @@ def main(params):
         combined_row = {**main_row, **add_row}
         combined_summary.append(combined_row)
 
-
-    cf_rafm_1 = combined_summary.copy()
-    cols = ['File_Name'] + [col for col in cf_rafm_1.columns if col != 'File_Name']
-    cf_rafm_1 = cf_rafm_1[cols]
+    cf_rafm = pd.DataFrame(combined_summary)
+    if not cf_rafm.empty and 'File_Name' in cf_rafm.columns:
+        cols = ['File_Name'] + [col for col in cf_rafm.columns if col != 'File_Name']
+        cf_rafm = cf_rafm[cols]
     
     cf_rafm = pd.DataFrame(combined_summary).rename(columns={'File_Name': 'RAFM File Name'})
     cf_rafm_merge = pd.merge(code, cf_rafm, on="RAFM File Name", how="left").fillna(0)
