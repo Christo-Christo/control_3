@@ -64,7 +64,7 @@ def parse_numeric_fast(val):
             if is_percent:
                 result /= 100.0
             
-            if cache_key and len(_numeric_cache) < 10000:
+            if cache_key:
                 _numeric_cache[cache_key] = result
 
             return result
@@ -84,6 +84,7 @@ def process_argo_file(file_path):
         df = pd.read_excel(file_path, sheet_name='Sheet1', engine='openpyxl', dtype=str)
         
         if df.empty:
+            print(f"❌ File {file_name_argo} kosong")
             return {'File_Name': file_name_argo}
         
         df.columns = df.columns.str.strip().str.lower()
@@ -112,6 +113,7 @@ def process_rafm_file(entry):
     try:
         wb = load_workbook(file_path, read_only=True, data_only=True, keep_links=False)
     except Exception as e:
+        print(f"❌ Tidak bisa membuka file {file_name}: {e}")
         return {**total_sums, 'File_Name': file_name}
 
     for sheet_name in target_sheets:
@@ -153,7 +155,7 @@ def process_rafm_file(entry):
                         if parsed_val is not None and parsed_val != 0:
                             total_sums[col] += parsed_val
 
-        except Exception:
+        except Exception as e:
             continue
 
     wb.close()
@@ -187,9 +189,8 @@ def main(params):
         summary_rows_argo = list(filter(None, executor.map(process_argo_file, file_paths_argo)))
 
     cf_argo = pd.DataFrame(summary_rows_argo)
-    if not cf_argo.empty:
-        cf_argo = cf_argo[['File_Name'] + [col for col in cf_argo.columns if col != 'File_Name']]
-        cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name', 'DAC_COV_UNITS': 'dac_cov_units'})
+    cf_argo = cf_argo[['File_Name'] + [col for col in cf_argo.columns if col != 'File_Name']]
+    cf_argo = cf_argo.rename(columns={'File_Name': 'ARGO File Name', 'DAC_COV_UNITS': 'dac_cov_units'})
     
     mask = code['RAFM File Name'].astype(str).str.contains('_ori', regex=True, na=False)
     code = code[~mask].copy()
