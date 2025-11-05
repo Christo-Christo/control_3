@@ -1,0 +1,13 @@
+❌ Error: Cannot convert <NA> to Excel
+Traceback (most recent call last):
+  File "d:\RUN 3\control_3\IRCS3_local\IRCS4_build\syntax\main.py", line 206, in add_sheets_to_rafm_manual
+    cell = ws.cell(row=r_idx, column=c_idx, value=value)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\christo\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\openpyxl\worksheet\worksheet.py", line 247, in cell
+    cell.value = value
+    ^^^^^^^^^^
+  File "C:\Users\christo\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\openpyxl\cell\cell.py", line 218, in value
+    self._bind_value(value)
+  File "C:\Users\christo\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\openpyxl\cell\cell.py", line 187, in _bind_value
+    raise ValueError("Cannot convert {0!r} to Excel".format(value))
+ValueError: Cannot convert <NA> to Excel
