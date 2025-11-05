@@ -9,13 +9,11 @@ import time
 import xlwings as xw
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment
-from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
 import warnings
 import shutil
 import datetime
 import tempfile
-import subprocess
 import psutil
 
 # Suppress warnings untuk performa
@@ -38,20 +36,15 @@ def kill_excel_processes():
                     proc.kill()
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
-        time.sleep(2)  # Wait for processes to fully terminate
+        time.sleep(2)
     except Exception as e:
         print(f"    ⚠️ Error killing Excel: {e}")
 
 
-def write_checking_summary_formulas_xlwings(ws, df_sheet, jenis, start_row=2):
+def write_checking_summary_formulas_xlsxwriter(worksheet, df_sheet, jenis, nrows, ncols):
     """
-    Tulis formula checking summary menggunakan xlwings
-    
-    Args:
-        ws: xlwings worksheet object
-        df_sheet: DataFrame checking summary
-        jenis: 'trad', 'ul', atau 'reas'
-        start_row: Baris mulai data (default=2, karena row 1 = header)
+    Tulis formula checking summary menggunakan xlsxwriter
+    Format sama dengan notes.py
     """
     sheet_names = {
         'trad': {
@@ -71,78 +64,195 @@ def write_checking_summary_formulas_xlwings(ws, df_sheet, jenis, start_row=2):
             'rafm_manual': 'RAFM Output Manual'
         }
     }
-    
-    nrows = len(df_sheet)
-    ncols = len(df_sheet.columns)
-    
-    # Tentukan kolom mulai formula dan offset
-    if jenis == 'trad':
-        start_col_idx = 5  # Kolom E
-        cf_argo_col_offset = 3  # Kolom C
-        cf_rafm_col_offset = 7  # Kolom G
-        rafm_manual_col_offset = 7
-        uvsg_col_offset = 7
-    elif jenis == 'ul':
-        start_col_idx = 4  # Kolom D
-        cf_argo_col_offset = 3  # Kolom C
-        cf_rafm_col_offset = 6  # Kolom F
-        rafm_manual_col_offset = 6
-    else:  # reas
-        start_col_idx = 4  # Kolom D
-        cf_argo_col_offset = 3  # Kolom C
-        cf_rafm_col_offset = 3  # Kolom C
-        rafm_manual_col_offset = 3
-    
-    # Loop per row
-    for row_idx in range(nrows):
-        row_excel = start_row + row_idx
-        
-        # Loop per column
-        for col_idx in range(start_col_idx, ncols + 1):
+
+    for row_idx in range(1, nrows):  # mulai dari baris ke-2 (Excel row 2)
+        row_excel = row_idx + 1
+
+        # Tentukan kolom dasar dan offset per jenis
+        if jenis == 'trad':
+            start_col_idx = 4  # E (0-based index)
+            cf_argo_col_offset = 2  # kolom C
+            cf_rafm_col_offset = 6  # kolom G
+            rafm_manual_col_offset = 6  # kolom G
+            uvsg_col_offset = 6  # kolom G
+
+        elif jenis == 'ul':
+            start_col_idx = 3  # D (0-based index)
+            cf_argo_col_offset = 2  # kolom C
+            cf_rafm_col_offset = 5  # kolom F
+            rafm_manual_col_offset = 5  # kolom F
+
+        else:  # reas
+            start_col_idx = 3  # D (0-based index)
+            cf_argo_col_offset = 2  # kolom C
+            cf_rafm_col_offset = 2  # kolom C
+            rafm_manual_col_offset = 2  # kolom C
+
+        for col_idx in range(start_col_idx, ncols):
             relative_offset = col_idx - start_col_idx
-            
+
             if jenis == 'trad':
-                cf_argo_col = get_column_letter(cf_argo_col_offset + relative_offset)
-                cf_rafm_col = get_column_letter(cf_rafm_col_offset + relative_offset)
-                rafm_manual_col = get_column_letter(rafm_manual_col_offset + relative_offset)
-                uvsg_col = get_column_letter(uvsg_col_offset + relative_offset)
-                
+                cf_argo_col = xl_col_to_name(cf_argo_col_offset + relative_offset)
+                cf_rafm_col = xl_col_to_name(cf_rafm_col_offset + relative_offset)
+                rafm_manual_col = xl_col_to_name(rafm_manual_col_offset + relative_offset)
+                uvsg_col = xl_col_to_name(uvsg_col_offset + relative_offset)
+
                 formula = (
                     f"='{sheet_names['trad']['cf_argo']}'!{cf_argo_col}{row_excel}"
                     f"-'{sheet_names['trad']['cf_rafm']}'!{cf_rafm_col}{row_excel}"
                     f"+'{sheet_names['trad']['rafm_manual']}'!{rafm_manual_col}{row_excel}"
                     f"-'{sheet_names['trad']['uvsg']}'!{uvsg_col}{row_excel}"
                 )
+
             elif jenis == 'ul':
-                cf_argo_col = get_column_letter(cf_argo_col_offset + relative_offset)
-                cf_rafm_col = get_column_letter(cf_rafm_col_offset + relative_offset)
-                rafm_manual_col = get_column_letter(rafm_manual_col_offset + relative_offset)
-                
+                cf_argo_col = xl_col_to_name(cf_argo_col_offset + relative_offset)
+                cf_rafm_col = xl_col_to_name(cf_rafm_col_offset + relative_offset)
+                rafm_manual_col = xl_col_to_name(rafm_manual_col_offset + relative_offset)
+
                 formula = (
                     f"='{sheet_names['ul']['cf_argo']}'!{cf_argo_col}{row_excel}"
                     f"-'{sheet_names['ul']['cf_rafm']}'!{cf_rafm_col}{row_excel}"
                     f"-'{sheet_names['ul']['rafm_manual']}'!{rafm_manual_col}{row_excel}"
                 )
-            else:  # reas
-                cf_argo_col = get_column_letter(cf_argo_col_offset + relative_offset)
-                cf_rafm_col = get_column_letter(cf_rafm_col_offset + relative_offset)
-                rafm_manual_col = get_column_letter(rafm_manual_col_offset + relative_offset)
-                
+
+            elif jenis == 'reas':
+                cf_argo_col = xl_col_to_name(cf_argo_col_offset + relative_offset)
+                cf_rafm_col = xl_col_to_name(cf_rafm_col_offset + relative_offset)
+                rafm_manual_col = xl_col_to_name(rafm_manual_col_offset + relative_offset)
+
                 formula = (
                     f"='{sheet_names['reas']['cf_argo']}'!{cf_argo_col}{row_excel}"
                     f"-'{sheet_names['reas']['cf_rafm']}'!{cf_rafm_col}{row_excel}"
                     f"+'{sheet_names['reas']['rafm_manual']}'!{rafm_manual_col}{row_excel}"
                 )
-            
-            # Write formula using xlwings
-            cell_address = f"{get_column_letter(col_idx)}{row_excel}"
-            ws.range(cell_address).formula = formula
+
+            worksheet.write_formula(row_idx, col_idx, formula)
+
+
+def auto_adjust_column_width(worksheet, df_sheet, max_width=50, sample_size=100):
+    """Auto adjust column width based on content - dari notes.py"""
+    if not hasattr(df_sheet, 'columns'):
+        return
+    
+    for i, col in enumerate(df_sheet.columns):
+        try:
+            sample_data = df_sheet[col].head(sample_size).astype(str)
+            max_len = max(
+                sample_data.str.len().max(),
+                len(str(col))
+            )
+            adjusted_width = min(max_len + 2, max_width)
+            worksheet.set_column(i, i, adjusted_width)
+        except Exception:
+            worksheet.set_column(i, i, 12)
+
+
+def apply_number_formats(workbook, worksheet, df_sheet, sheet_name):
+    """Apply number formats to worksheet - dari notes.py"""
+    if sheet_name == 'Control':
+        return
+    
+    format_accounting = workbook.add_format({
+        'num_format': '_-* #,##0_-;_-* (#,##0);_-* "-"_-;_-@_-'
+    })
+    format_int = workbook.add_format({'num_format': '0'})
+    format_no_format = workbook.add_format()
+    
+    if not hasattr(df_sheet, 'columns'):
+        return
+    
+    # Batch apply formats per column type
+    for col_idx, col_name in enumerate(df_sheet.columns):
+        col_name_lower = str(col_name).lower()
+        
+        if 'speed duration' in col_name_lower:
+            worksheet.set_column(col_idx, col_idx, None, format_no_format)
+        elif 'include year' in col_name_lower or 'exclude year' in col_name_lower:
+            worksheet.set_column(col_idx, col_idx, None, format_int)
+        else:
+            worksheet.set_column(col_idx, col_idx, None, format_accounting)
+
+
+def replace_rafm_output_manual_with_linked_sheet(src_path, dest_path, sheet_name="RAFM Output Manual"):
+    """
+    Replace RAFM Output Manual sheet dengan copy dari file original
+    Preserves all SharePoint links and formulas
+    """
+    app = None
+    src_wb = None
+    dest_wb = None
+    
+    try:
+        if not os.path.exists(src_path):
+            print(f"    ⚠️ File source RAFM manual tidak ditemukan: {src_path}")
+            return False
+        
+        if not os.path.exists(dest_path):
+            print(f"    ⚠️ File destination tidak ditemukan: {dest_path}")
+            return False
+        
+        print(f"    ↳ Replacing '{sheet_name}' with original (preserving links)...")
+        
+        # Use xlwings to copy sheet (preserves all links)
+        app = xw.App(visible=False)
+        app.display_alerts = False
+        app.screen_updating = False
+        
+        src_wb = app.books.open(src_path)
+        dest_wb = app.books.open(dest_path)
+        
+        # Delete existing sheet if present
+        if sheet_name in [s.name for s in dest_wb.sheets]:
+            dest_wb.sheets[sheet_name].delete()
+        
+        # Copy first sheet from source
+        src_sheet = src_wb.sheets[0]
+        src_sheet.api.Copy(After=dest_wb.sheets[-1].api)
+        
+        # Rename copied sheet
+        dest_wb.sheets[-1].name = sheet_name
+        
+        # Save and close
+        dest_wb.save()
+        dest_wb.close()
+        src_wb.close()
+        
+        app.quit()
+        
+        print(f"    ✓ Sheet '{sheet_name}' replaced successfully (links intact)")
+        return True
+        
+    except Exception as e:
+        print(f"    ⚠️ Gagal replace RAFM Output Manual: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    
+    finally:
+        # Cleanup
+        if dest_wb:
+            try:
+                dest_wb.close()
+            except:
+                pass
+        if src_wb:
+            try:
+                src_wb.close()
+            except:
+                pass
+        if app:
+            try:
+                app.quit()
+            except:
+                pass
 
 
 def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output_filename, jenis):
     """
-    🔧 XLWINGS APPROACH: Gunakan Excel COM API untuk 100% compatibility
-    Preserves ALL SharePoint links perfectly (no corruption!)
+    🔧 HYBRID APPROACH:
+    1. Copy RAFM Manual file → preserve SharePoint links
+    2. Write new sheets using xlsxwriter → perfect formatting
+    3. Replace RAFM Output Manual sheet using xlwings → preserve links
     
     Args:
         rafm_manual_path: Path ke file RAFM Output Manual original
@@ -154,15 +264,12 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
     Returns:
         str: Path file output yang berhasil dibuat
     """
-    app = None
-    wb = None
-    
     try:
         if not os.path.exists(rafm_manual_path):
             print(f"❌ File RAFM Manual tidak ditemukan: {rafm_manual_path}")
             return None
         
-        print(f"\n🚀 Menambahkan sheet ke RAFM Output Manual (XLWINGS MODE)...")
+        print(f"\n🚀 Menambahkan sheet ke RAFM Output Manual...")
         start_time = time.time()
         
         # Create output directory
@@ -178,13 +285,12 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
             except PermissionError:
                 print(f"  ⚠️ File sedang digunakan, force close Excel...")
                 kill_excel_processes()
+                time.sleep(2)
                 
                 try:
                     os.remove(output_file)
                     print(f"  ✓ File lama berhasil dihapus setelah force close")
                 except PermissionError:
-                    # Use alternative filename with timestamp
-                    print(f"  ⚠️ File masih terkunci, menggunakan nama alternatif...")
                     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                     base_name = os.path.splitext(output_filename)[0]
                     ext = os.path.splitext(output_filename)[1]
@@ -192,144 +298,132 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
                     output_file = os.path.join(output_path, output_filename)
                     print(f"  ↳ Nama baru: {output_filename}")
         
-        # 🔧 STEP 2: Copy original file first (preserves metadata)
-        print(f"  ↳ Copying original file...")
+        # 🔧 STEP 2: Copy original RAFM Manual file (preserves all metadata)
+        print(f"  ↳ Copying original file (preserving all links)...")
         shutil.copy2(rafm_manual_path, output_file)
-        print(f"  ✓ File copied (all metadata preserved)")
+        print(f"  ✓ File copied successfully (SharePoint links intact)")
         
         time.sleep(0.5)  # Wait for file system
         
-        # 🔧 STEP 3: Open with xlwings (Excel COM API)
-        print(f"  ↳ Starting Excel via COM API...")
-        app = xw.App(visible=False)
-        app.display_alerts = False
-        app.screen_updating = False
+        # 🔧 STEP 3: Write new sheets using xlsxwriter (perfect formatting)
+        print(f"  ↳ Adding {len(result_dict)} new sheets with xlsxwriter...")
         
-        print(f"  ↳ Opening workbook...")
-        wb = app.books.open(output_file)
+        # Create temporary file for xlsxwriter output
+        temp_file = os.path.join(tempfile.gettempdir(), f"temp_{output_filename}")
         
-        # Handle Sheet1 rename
-        sheet_names_list = [sh.name for sh in wb.sheets]
-        if 'Sheet1' in sheet_names_list and 'RAFM Output Manual' not in sheet_names_list:
-            print(f"  ↳ Rename 'Sheet1' → 'RAFM Output Manual'")
-            wb.sheets['Sheet1'].name = 'RAFM Output Manual'
-        elif 'Sheet1' in sheet_names_list and 'RAFM Output Manual' in sheet_names_list:
-            print(f"  ↳ Menghapus 'Sheet1' duplikat...")
-            wb.sheets['Sheet1'].delete()
-        
-        # Order sheets berdasarkan jenis
-        if jenis == 'trad':
-            sheet_order = [
-                'Control', 'Code', 
-                'CF ARGO AZTRAD', 'RAFM Output AZTRAD', 
-                'RAFM Output Manual',
-                'RAFM Output AZUL_PI',
-                'Checking Summary AZTRAD'
-            ]
-        elif jenis == 'ul':
-            sheet_order = [
-                'Control', 'Code',
-                'CF ARGO AZUL', 'RAFM Output AZUL',
-                'RAFM Output Manual',
-                'Checking Summary AZUL'
-            ]
-        else:  # reas
-            sheet_order = [
-                'Control', 'Code',
-                'CF ARGO REAS', 'RAFM Output REAS',
-                'RAFM Output Manual',
-                'Checking Summary REAS'
-            ]
-        
-        # 🔧 STEP 4: Add new sheets
-        print(f"  ↳ Menambahkan {len(result_dict)} sheet baru...")
-        
-        for sheet_name, df in result_dict.items():
-            # 🚨 CRITICAL: Skip RAFM Output Manual
-            if sheet_name == 'RAFM Output Manual':
-                print(f"    • {sheet_name}: SKIP (preserve existing)")
-                continue
+        with pd.ExcelWriter(temp_file, engine='xlsxwriter',
+                            engine_kwargs={'options': {'strings_to_numbers': False}}) as writer:
+            workbook = writer.book
             
-            print(f"    • Menambahkan sheet: {sheet_name}")
-            
-            # Clean DataFrame
-            df = df.copy()
-            df = df.replace({pd.NA: None, pd.NaT: None})
-            df = df.where(pd.notna(df), None)
-            
-            # Delete if exists
-            current_sheets = [sh.name for sh in wb.sheets]
-            if sheet_name in current_sheets:
-                wb.sheets[sheet_name].delete()
-            
-            # Add new sheet at the end
-            ws = wb.sheets.add(sheet_name, after=wb.sheets[-1])
-            
-            # Write data
-            if sheet_name == 'Control':
-                # Control without header
-                ws.range('A1').value = df.values.tolist()
-            else:
-                # Other sheets with header
-                data_with_header = [df.columns.tolist()] + df.values.tolist()
-                ws.range('A1').value = data_with_header
+            for sheet_name, df_sheet in result_dict.items():
+                # Skip RAFM Output Manual - will be handled by xlwings
+                if sheet_name == 'RAFM Output Manual':
+                    print(f"    • {sheet_name}: SKIP (will preserve from original)")
+                    continue
                 
-                # Format numbers as accounting
-                print(f"    • Applying number format...")
-                last_row = len(df) + 1
-                last_col = len(df.columns)
+                print(f"    • Writing sheet: {sheet_name}")
                 
-                # Apply accounting format to numeric columns (skip header)
-                for col_idx in range(1, last_col + 1):
-                    col_letter = get_column_letter(col_idx)
-                    # Check if column contains numbers (sample row 2)
-                    sample_val = ws.range(f'{col_letter}2').value
-                    if isinstance(sample_val, (int, float)):
-                        data_range = ws.range(f'{col_letter}2:{col_letter}{last_row}')
-                        data_range.number_format = '_-* #,##0_-;_-* (#,##0);_-* "-"_-;_-@_-'
+                # Write data
+                if sheet_name == 'Control':
+                    df_sheet.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
+                else:
+                    df_sheet.to_excel(writer, sheet_name=sheet_name, index=False, header=True)
                 
-                # Add borders
-                print(f"    • Applying borders...")
-                full_range = ws.range(f'A1:{get_column_letter(last_col)}{last_row}')
-                full_range.api.Borders.LineStyle = 1  # xlContinuous
-                full_range.api.Borders.Weight = 2     # xlThin
-            
-            # Write formulas for Checking Summary
-            if sheet_name.startswith("Checking Summary"):
-                print(f"    • Menulis formula checking summary...")
-                write_checking_summary_formulas_xlwings(ws, df, jenis)
-            
-            # Auto-fit columns
-            print(f"    • Auto-fitting columns...")
-            ws.autofit(axis='columns')
+                worksheet = writer.sheets[sheet_name]
+                
+                # Auto adjust column width (dari notes.py)
+                auto_adjust_column_width(worksheet, df_sheet)
+                
+                # Apply number formats (dari notes.py)
+                apply_number_formats(workbook, worksheet, df_sheet, sheet_name)
+                
+                # Add borders (kecuali Control sheet)
+                if sheet_name != 'Control':
+                    border_format = workbook.add_format({
+                        'border': 1,
+                        'border_color': 'black'
+                    })
+                    nrows, ncols = df_sheet.shape
+                    worksheet.conditional_format(
+                        0, 0, nrows, ncols - 1,
+                        {'type': 'no_errors', 'format': border_format}
+                    )
+                
+                # Write formulas for Checking Summary
+                if sheet_name.lower().startswith("checking summary"):
+                    print(f"    • Writing formulas for {sheet_name}...")
+                    nrows, ncols = df_sheet.shape
+                    nomor_kolom = df_sheet.iloc[:, 0].dropna()
+                    if not nomor_kolom.empty:
+                        nrows = int(nomor_kolom.max()) + 1
+                    write_checking_summary_formulas_xlsxwriter(worksheet, df_sheet, jenis, nrows, ncols)
         
-        # 🔧 STEP 5: Reorder sheets
-        print(f"  ↳ Mengurutkan sheets...")
-        current_sheets = [sh.name for sh in wb.sheets]
+        print(f"  ✓ Temporary file created with all sheets")
         
-        # Move sheets to correct position
-        for target_idx, sheet_name in enumerate(sheet_order):
-            if sheet_name in current_sheets:
-                current_idx = [sh.name for sh in wb.sheets].index(sheet_name)
-                if current_idx != target_idx:
-                    wb.sheets[sheet_name].api.Move(Before=wb.sheets[target_idx].api)
-        
-        # 🔧 STEP 6: Save and close
-        print(f"  ↳ Saving workbook...")
-        wb.save()
-        wb.close()
-        
-        print(f"  ↳ Closing Excel...")
-        app.quit()
+        # 🔧 STEP 4: Merge temp file sheets into output file using xlwings
+        print(f"  ↳ Merging sheets into output file...")
         
         app = None
-        wb = None
+        temp_wb = None
+        output_wb = None
+        
+        try:
+            app = xw.App(visible=False)
+            app.display_alerts = False
+            app.screen_updating = False
+            
+            temp_wb = app.books.open(temp_file)
+            output_wb = app.books.open(output_file)
+            
+            # Copy all sheets from temp to output (except RAFM Output Manual)
+            for sheet in temp_wb.sheets:
+                sheet_name = sheet.name
+                
+                # Delete if exists in output
+                if sheet_name in [s.name for s in output_wb.sheets]:
+                    output_wb.sheets[sheet_name].delete()
+                
+                # Copy sheet
+                sheet.api.Copy(After=output_wb.sheets[-1].api)
+                print(f"    • Copied sheet: {sheet_name}")
+            
+            # Save and close
+            output_wb.save()
+            output_wb.close()
+            temp_wb.close()
+            app.quit()
+            
+            print(f"  ✓ All sheets merged successfully")
+            
+        finally:
+            if output_wb:
+                try:
+                    output_wb.close()
+                except:
+                    pass
+            if temp_wb:
+                try:
+                    temp_wb.close()
+                except:
+                    pass
+            if app:
+                try:
+                    app.quit()
+                except:
+                    pass
+        
+        # Clean up temp file
+        try:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+        except:
+            pass
         
         elapsed = time.time() - start_time
         
         print(f"✅ Selesai dalam {elapsed:.2f} detik")
         print(f"   📁 Output: {output_file}")
-        print(f"   ✅ NO CORRUPTION - Excel COM API used")
+        print(f"   ✅ Format perfect (xlsxwriter)")
         print(f"   ✅ SharePoint links PRESERVED")
         
         return output_file
@@ -339,32 +433,6 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
         import traceback
         traceback.print_exc()
         return None
-    
-    finally:
-        # CRITICAL: Always cleanup Excel
-        if wb is not None:
-            try:
-                wb.close()
-            except:
-                pass
-        
-        if app is not None:
-            try:
-                app.quit()
-            except:
-                pass
-        
-        # Force kill any remaining Excel processes
-        time.sleep(1)
-        try:
-            for proc in psutil.process_iter(['name']):
-                if proc.info['name'] and 'excel' in proc.info['name'].lower():
-                    try:
-                        proc.kill()
-                    except:
-                        pass
-        except:
-            pass
 
 
 def process_input_file(file_path):
@@ -429,9 +497,9 @@ def process_input_file(file_path):
 
 
 def main(input_path):
-    """Main entry point - SEQUENTIAL processing for xlwings compatibility"""
+    """Main entry point"""
     print("\n" + "="*60)
-    print("🔧 CONTROL 4 - RAFM OUTPUT PROCESSOR (XLWINGS MODE)")
+    print("🔧 CONTROL 4 - RAFM OUTPUT PROCESSOR")
     print("="*60)
     
     start_time = time.time()
@@ -454,9 +522,9 @@ def main(input_path):
         return
 
     print(f"📊 Ditemukan {len(files)} file untuk diproses\n")
-    
-    # 🚨 SEQUENTIAL processing for xlwings (COM API tidak support parallel)
-    print(f"📋 Mode: Sequential processing (xlwings compatibility)\n")
+
+    # Process files - Sequential (xlwings limitation)
+    print(f"📋 Mode: Sequential processing\n")
     
     success_count = 0
     fail_count = 0
@@ -479,11 +547,13 @@ def main(input_path):
     # Summary
     elapsed = time.time() - start_time
     print("\n" + "="*60)
+    print(f"📊 Summary:")
+    print(f"   Total: {len(files)} file(s)")
+    print(f"   ✅ Success: {success_count}")
+    print(f"   ❌ Failed: {fail_count}")
     print(f"⏱️  TOTAL WAKTU: {elapsed:.2f} detik")
-    print(f"📊 Total: {len(files)} file(s)")
-    print(f"✅ Success: {success_count}")
-    print(f"❌ Failed: {fail_count}")
-    print(f"⚡ Avg: {elapsed/len(files):.2f} detik/file")
+    if len(files) > 0:
+        print(f"⚡ Avg: {elapsed/len(files):.2f} detik/file")
     print("="*60)
 
 
