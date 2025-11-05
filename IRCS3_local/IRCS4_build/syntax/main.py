@@ -6,7 +6,9 @@ import syntax.control_4_ul as ul
 import syntax.control_4_reas as reas
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
-import xlwings as xw
+from openpyxl import load_workbook
+from openpyxl.styles import Border, Side, Alignment
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 cols_to_sum_dict = {
     'trad': trad.cols_to_compare,
@@ -14,50 +16,17 @@ cols_to_sum_dict = {
     'reas': reas.cols_to_compare
 }
 
-def auto_adjust_column_width(worksheet, df_sheet, max_width=50, sample_size=100):
-    if not hasattr(df_sheet, 'columns'):
-        return
+
+def write_checking_summary_formulas_openpyxl(ws, df_sheet, jenis, start_row=2):
+    """
+    Tulis formula checking summary menggunakan openpyxl
     
-    for i, col in enumerate(df_sheet.columns):
-        try:
-            sample_data = df_sheet[col].head(sample_size).astype(str)
-            
-            max_len = max(
-                sample_data.str.len().max(),
-                len(str(col))
-            )
-
-            adjusted_width = min(max_len + 2, max_width)
-            worksheet.set_column(i, i, adjusted_width)
-        except Exception:
-            worksheet.set_column(i, i, 12)
-
-
-def apply_number_formats(workbook, worksheet, df_sheet, sheet_name):
-    if sheet_name == 'Control':
-        return
-    
-    format_accounting = workbook.add_format({
-        'num_format': '_-* #,##0_-;_-* (#,##0);_-* "-"_-;_-@_-'
-    })
-    format_int = workbook.add_format({'num_format': '0'})
-    format_no_format = workbook.add_format()
-    
-    if not hasattr(df_sheet, 'columns'):
-        return
-    
-    for col_idx, col_name in enumerate(df_sheet.columns):
-        col_name_lower = str(col_name).lower()
-        
-        if 'speed duration' in col_name_lower:
-            worksheet.set_column(col_idx, col_idx, None, format_no_format)
-        elif 'include year' in col_name_lower or 'exclude year' in col_name_lower:
-            worksheet.set_column(col_idx, col_idx, None, format_int)
-        else:
-            worksheet.set_column(col_idx, col_idx, None, format_accounting)
-
-
-def write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, ncols):
+    Args:
+        ws: openpyxl worksheet object
+        df_sheet: DataFrame checking summary
+        jenis: 'trad', 'ul', atau 'reas'
+        start_row: Baris mulai data (default=2, karena row 1 = header)
+    """
     sheet_names = {
         'trad': {
             'cf_argo': 'CF ARGO AZTRAD',
@@ -76,167 +45,224 @@ def write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, n
             'rafm_manual': 'RAFM Output Manual'
         }
     }
-
-    for row_idx in range(1, nrows):
-        row_excel = row_idx + 1
-
-        if jenis == 'trad':
-            start_col_idx = 4
-            cf_argo_col_offset = 2
-            cf_rafm_col_offset = 6
-            rafm_manual_col_offset = 6
-            uvsg_col_offset = 6
-
-        elif jenis == 'ul':
-            start_col_idx = 3
-            cf_argo_col_offset = 2
-            cf_rafm_col_offset = 5
-            rafm_manual_col_offset = 5
-
-        else:  # reas
-            start_col_idx = 3
-            cf_argo_col_offset = 2
-            cf_rafm_col_offset = 2
-            rafm_manual_col_offset = 2
-
-        for col_idx in range(start_col_idx, ncols):
+    
+    nrows = len(df_sheet)
+    ncols = len(df_sheet.columns)
+    
+    # Tentukan kolom mulai formula dan offset
+    if jenis == 'trad':
+        start_col_idx = 5  # Kolom E (1-based: 5)
+        cf_argo_col_offset = 3  # Kolom C
+        cf_rafm_col_offset = 7  # Kolom G
+        rafm_manual_col_offset = 7
+        uvsg_col_offset = 7
+    elif jenis == 'ul':
+        start_col_idx = 4  # Kolom D
+        cf_argo_col_offset = 3  # Kolom C
+        cf_rafm_col_offset = 6  # Kolom F
+        rafm_manual_col_offset = 6
+    else:  # reas
+        start_col_idx = 4  # Kolom D
+        cf_argo_col_offset = 3  # Kolom C
+        cf_rafm_col_offset = 3  # Kolom C
+        rafm_manual_col_offset = 3
+    
+    # Loop per row (skip header)
+    for row_idx in range(nrows):
+        row_excel = start_row + row_idx
+        
+        # Loop per column (mulai dari kolom formula)
+        for col_idx in range(start_col_idx, ncols + 1):
             relative_offset = col_idx - start_col_idx
-
+            
             if jenis == 'trad':
-                cf_argo_col = xl_col_to_name(cf_argo_col_offset + relative_offset)
-                cf_rafm_col = xl_col_to_name(cf_rafm_col_offset + relative_offset)
-                rafm_manual_col = xl_col_to_name(rafm_manual_col_offset + relative_offset)
-                uvsg_col = xl_col_to_name(uvsg_col_offset + relative_offset)
-
+                from openpyxl.utils import get_column_letter
+                cf_argo_col = get_column_letter(cf_argo_col_offset + relative_offset)
+                cf_rafm_col = get_column_letter(cf_rafm_col_offset + relative_offset)
+                rafm_manual_col = get_column_letter(rafm_manual_col_offset + relative_offset)
+                uvsg_col = get_column_letter(uvsg_col_offset + relative_offset)
+                
                 formula = (
                     f"='{sheet_names['trad']['cf_argo']}'!{cf_argo_col}{row_excel}"
                     f"-'{sheet_names['trad']['cf_rafm']}'!{cf_rafm_col}{row_excel}"
                     f"+'{sheet_names['trad']['rafm_manual']}'!{rafm_manual_col}{row_excel}"
                     f"-'{sheet_names['trad']['uvsg']}'!{uvsg_col}{row_excel}"
                 )
-
             elif jenis == 'ul':
-                cf_argo_col = xl_col_to_name(cf_argo_col_offset + relative_offset)
-                cf_rafm_col = xl_col_to_name(cf_rafm_col_offset + relative_offset)
-                rafm_manual_col = xl_col_to_name(rafm_manual_col_offset + relative_offset)
-
+                from openpyxl.utils import get_column_letter
+                cf_argo_col = get_column_letter(cf_argo_col_offset + relative_offset)
+                cf_rafm_col = get_column_letter(cf_rafm_col_offset + relative_offset)
+                rafm_manual_col = get_column_letter(rafm_manual_col_offset + relative_offset)
+                
                 formula = (
                     f"='{sheet_names['ul']['cf_argo']}'!{cf_argo_col}{row_excel}"
                     f"-'{sheet_names['ul']['cf_rafm']}'!{cf_rafm_col}{row_excel}"
                     f"-'{sheet_names['ul']['rafm_manual']}'!{rafm_manual_col}{row_excel}"
                 )
-
-            elif jenis == 'reas':
-                cf_argo_col = xl_col_to_name(cf_argo_col_offset + relative_offset)
-                cf_rafm_col = xl_col_to_name(cf_rafm_col_offset + relative_offset)
-                rafm_manual_col = xl_col_to_name(rafm_manual_col_offset + relative_offset)
-
+            else:  # reas
+                from openpyxl.utils import get_column_letter
+                cf_argo_col = get_column_letter(cf_argo_col_offset + relative_offset)
+                cf_rafm_col = get_column_letter(cf_rafm_col_offset + relative_offset)
+                rafm_manual_col = get_column_letter(rafm_manual_col_offset + relative_offset)
+                
                 formula = (
                     f"='{sheet_names['reas']['cf_argo']}'!{cf_argo_col}{row_excel}"
                     f"-'{sheet_names['reas']['cf_rafm']}'!{cf_rafm_col}{row_excel}"
                     f"+'{sheet_names['reas']['rafm_manual']}'!{rafm_manual_col}{row_excel}"
                 )
+            
+            ws.cell(row=row_excel, column=col_idx, value=formula)
 
-            worksheet.write_formula(row_idx, col_idx, formula)
 
-
-def insert_rafm_manual_optimized(src_path, dest_path, sheet_name="RAFM Output Manual", insert_position=None):
+def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output_filename, jenis):
     """
-    OPTIMIZED: Copy sheet RAFM Manual dengan formula utuh (termasuk SharePoint links)
-    menggunakan xlwings dengan optimasi kecepatan maksimal
+    Tambahkan sheet hasil processing ke file RAFM Output Manual existing,
+    kemudian Save As dengan nama baru
     
-    Optimasi yang diterapkan:
-    1. Minimize Excel interactions
-    2. Batch operations
-    3. Disable recalculation saat copy
-    4. Reuse Excel instance
+    Args:
+        rafm_manual_path: Path ke file RAFM Output Manual original
+        result_dict: Dictionary hasil processing {sheet_name: dataframe}
+        output_path: Folder output
+        output_filename: Nama file output baru
+        jenis: 'trad', 'ul', atau 'reas'
+    
+    Returns:
+        str: Path file output yang berhasil dibuat
     """
     try:
-        if not os.path.exists(src_path):
-            print(f"⚠️ File RAFM manual tidak ditemukan: {src_path}")
-            return False
-            
-        if not os.path.exists(dest_path):
-            print(f"⚠️ File output tidak ditemukan: {dest_path}")
-            return False
-
-        print(f"🔄 Menyalin sheet '{sheet_name}' (OPTIMIZED MODE)...")
+        if not os.path.exists(rafm_manual_path):
+            print(f"❌ File RAFM Manual tidak ditemukan: {rafm_manual_path}")
+            return None
+        
+        print(f"\n🚀 Menambahkan sheet ke RAFM Output Manual...")
         start_time = time.time()
         
-        # Reuse existing Excel instance jika ada (lebih cepat)
-        try:
-            app = xw.apps.active
-            if app is None:
-                raise Exception("No active app")
-        except:
-            app = xw.App(visible=False, add_book=False)
+        # Buat output path
+        os.makedirs(output_path, exist_ok=True)
+        output_file = os.path.join(output_path, output_filename)
         
-        # KUNCI OPTIMASI: Matikan semua yang memperlambat
-        app.display_alerts = False
-        app.screen_updating = False
-        app.calculation = 'manual'  # Matikan auto-calculate (PENTING!)
-        app.enable_events = False
+        # Load workbook RAFM Manual menggunakan openpyxl
+        print(f"  ↳ Membuka file RAFM Manual (formula tetap utuh)...")
+        wb = load_workbook(rafm_manual_path)
         
-        try:
-            # Buka files dengan minimal interaction
-            print("  ↳ Membuka files...")
-            src_wb = app.books.open(src_path, update_links=False, read_only=True)
-            dest_wb = app.books.open(dest_path, update_links=False)
+        # Border style untuk formatting
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Order sheets berdasarkan jenis
+        if jenis == 'trad':
+            sheet_order = [
+                'Control', 'Code', 
+                'CF ARGO AZTRAD', 'RAFM Output AZTRAD', 
+                'RAFM Output Manual',  # Sheet existing (sudah ada)
+                'RAFM Output AZUL_PI',
+                'Checking Summary AZTRAD'
+            ]
+        elif jenis == 'ul':
+            sheet_order = [
+                'Control', 'Code',
+                'CF ARGO AZUL', 'RAFM Output AZUL',
+                'RAFM Output Manual',  # Sheet existing
+                'Checking Summary AZUL'
+            ]
+        else:  # reas
+            sheet_order = [
+                'Control', 'Code',
+                'CF ARGO REAS', 'RAFM Output REAS',
+                'RAFM Output Manual',  # Sheet existing
+                'Checking Summary REAS'
+            ]
+        
+        # Tambahkan sheet baru dari result_dict
+        print(f"  ↳ Menambahkan {len(result_dict)} sheet baru...")
+        for sheet_name, df in result_dict.items():
+            # Skip RAFM Output Manual karena sudah ada di file original
+            if sheet_name == 'RAFM Output Manual':
+                print(f"    • {sheet_name}: SKIP (already exists)")
+                continue
             
-            # Hapus sheet lama jika ada
-            if sheet_name in [s.name for s in dest_wb.sheets]:
-                print(f"  ↳ Menghapus sheet lama...")
-                dest_wb.sheets[sheet_name].delete()
+            print(f"    • Menambahkan sheet: {sheet_name}")
             
-            # Copy sheet (ini yang lama, tapi unavoidable untuk preserve links)
-            src_sheet = src_wb.sheets[0]
-            print(f"  ↳ Menyalin sheet (mohon tunggu)...")
+            # Buat sheet baru
+            if sheet_name in wb.sheetnames:
+                del wb[sheet_name]  # Hapus jika sudah ada
             
-            # Tentukan posisi
-            if insert_position is not None and insert_position < len(dest_wb.sheets):
-                target_sheet = dest_wb.sheets[insert_position]
-                src_sheet.api.Copy(After=target_sheet.api)
+            ws = wb.create_sheet(title=sheet_name)
+            
+            # Tulis data
+            if sheet_name == 'Control':
+                # Control tanpa header
+                for r_idx, row in enumerate(df.values, start=1):
+                    for c_idx, value in enumerate(row, start=1):
+                        ws.cell(row=r_idx, column=c_idx, value=value)
             else:
-                src_sheet.api.Copy(After=dest_wb.sheets[-1].api)
+                # Sheet lain dengan header
+                for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start=1):
+                    for c_idx, value in enumerate(row, start=1):
+                        cell = ws.cell(row=r_idx, column=c_idx, value=value)
+                        cell.border = thin_border
+                        
+                        # Format accounting untuk numeric columns
+                        if r_idx > 1 and isinstance(value, (int, float)):
+                            cell.number_format = '_-* #,##0_-;_-* (#,##0);_-* "-"_-;_-@_-'
             
-            # Rename
-            dest_wb.sheets[-1].name = sheet_name
-            print(f"  ↳ Sheet berhasil di-copy")
+            # Tulis formula untuk Checking Summary
+            if sheet_name.startswith("Checking Summary"):
+                print(f"    • Menulis formula checking summary...")
+                write_checking_summary_formulas_openpyxl(ws, df, jenis)
             
-            # Save dengan calculation masih manual (lebih cepat)
-            print("  ↳ Menyimpan file...")
-            dest_wb.save()
-            
-            # Close files
-            src_wb.close()
-            dest_wb.close()
-            
-            elapsed = time.time() - start_time
-            print(f"✅ Selesai dalam {elapsed:.2f} detik")
-            print(f"   Formula SharePoint tetap utuh dan aktif")
-            
-            return True
-            
-        finally:
-            # Restore calculation mode
-            app.calculation = 'automatic'
-            
+            # Auto-adjust column width
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+        
+        # Reorder sheets sesuai urutan yang diinginkan
+        print(f"  ↳ Mengurutkan sheets...")
+        existing_sheets = wb.sheetnames
+        ordered_sheets = [s for s in sheet_order if s in existing_sheets]
+        
+        # Move sheets ke posisi yang benar
+        for idx, sheet_name in enumerate(ordered_sheets):
+            if sheet_name in wb.sheetnames:
+                sheet = wb[sheet_name]
+                wb.move_sheet(sheet, offset=idx - wb.index(sheet))
+        
+        # Save As dengan nama baru
+        print(f"  ↳ Menyimpan sebagai: {output_filename}")
+        wb.save(output_file)
+        wb.close()
+        
+        elapsed = time.time() - start_time
+        print(f"✅ Selesai dalam {elapsed:.2f} detik")
+        print(f"   📁 Output: {output_file}")
+        print(f"   ✓ Formula SharePoint di 'RAFM Output Manual' tetap utuh")
+        
+        return output_file
+        
     except Exception as e:
-        print(f"❌ Error saat copy: {e}")
+        print(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
-        return False
-
-
-def get_sheet_insert_position(jenis):
-    """Tentukan posisi insert sheet RAFM Output Manual"""
-    if jenis in ['trad', 'ul', 'reas']:
-        return 3  # Setelah: Control, Code, CF ARGO, RAFM Output
-    return None
+        return None
 
 
 def process_input_file(file_path):
+    """Process single input file"""
     filename = os.path.basename(file_path).lower()
+    
+    # Deteksi jenis
     if 'trad' in filename:
         jenis = 'trad'
         result = trad.main({"input excel": file_path})
@@ -250,8 +276,12 @@ def process_input_file(file_path):
         print(f"❌ Jenis file tidak dikenali: {filename}")
         return
 
-    print(f"\n📄 Memproses: {filename} (jenis: {jenis})")
+    print(f"\n{'='*60}")
+    print(f"📄 PROCESSING: {filename}")
+    print(f"   Jenis: {jenis.upper()}")
+    print(f"{'='*60}")
     
+    # Baca File Path sheet
     try:
         df = pd.read_excel(file_path, sheet_name='File Path')
     except Exception as e:
@@ -262,69 +292,42 @@ def process_input_file(file_path):
     df['Name'] = df['Name'].astype(str).str.strip().str.lower()
     df['File Path'] = df['File Path'].astype(str).str.strip()
 
-    if 'output_path' not in df['Name'].values or 'output_filename' not in df['Name'].values:
-        print(f"⚠️ output_path atau output_filename tidak ditemukan")
+    # Validasi required fields
+    required = ['output_path', 'output_filename', 'rafm manual']
+    missing = [r for r in required if r not in df['Name'].values]
+    if missing:
+        print(f"⚠️ Missing di File Path sheet: {missing}")
         return
 
-    output_path = df.loc[df['Name']=='output_path','File Path'].values[0]
-    output_filename = df.loc[df['Name']=='output_filename','File Path'].values[0]
-    os.makedirs(output_path, exist_ok=True)
-    output_file = os.path.join(output_path, output_filename)
+    # Get paths
+    output_path = df.loc[df['Name']=='output_path', 'File Path'].values[0]
+    output_filename = df.loc[df['Name']=='output_filename', 'File Path'].values[0]
+    rafm_manual_path = df.loc[df['Name']=='rafm manual', 'File Path'].values[0]
 
-    # Tulis semua sheet hasil processing
-    print("📝 Menulis hasil processing ke Excel...")
-    with pd.ExcelWriter(output_file, engine='xlsxwriter',
-                        engine_kwargs={'options': {'strings_to_numbers': False}}) as writer:
-        workbook = writer.book
-        for sheet_name, df_sheet in result.items():
-            if sheet_name == 'Control':
-                df_sheet.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
-            else:
-                df_sheet.to_excel(writer, sheet_name=sheet_name, index=False, header=True)
-            
-            worksheet = writer.sheets[sheet_name]
-            auto_adjust_column_width(worksheet, df_sheet)
-            apply_number_formats(workbook, worksheet, df_sheet, sheet_name)
-
-            if sheet_name != 'Control':
-                border_format = workbook.add_format({'border':1,'border_color':'black'})
-                nrows, ncols = df_sheet.shape
-                worksheet.conditional_format(0,0,nrows,ncols-1,{'type':'no_errors','format':border_format})
-
-            if sheet_name.lower().startswith("checking summary"):
-                nrows, ncols = df_sheet.shape
-                nomor_kolom = df_sheet.iloc[:,0].dropna()
-                if not nomor_kolom.empty:
-                    nrows = int(nomor_kolom.max()) + 1
-                write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, ncols)
-
-    print("✅ File dasar berhasil dibuat")
-
-    # Insert RAFM Output Manual dengan optimasi
-    try:
-        rafm_manual_path = df.loc[df['Name']=='rafm manual','File Path'].values[0]
-        if os.path.exists(rafm_manual_path):
-            print("\n🚀 Memulai copy RAFM Output Manual...")
-            insert_position = get_sheet_insert_position(jenis)
-            success = insert_rafm_manual_optimized(
-                src_path=rafm_manual_path,
-                dest_path=output_file,
-                sheet_name="RAFM Output Manual",
-                insert_position=insert_position
-            )
-            if not success:
-                print("⚠️ Gagal copy RAFM Output Manual")
-        else:
-            print(f"⚠️ File RAFM manual tidak ditemukan: {rafm_manual_path}")
-    except Exception as e:
-        print(f"⚠️ Error: {e}")
-
-    print(f"\n✅ OUTPUT FINAL: {output_file}")
+    # Proses: Tambahkan sheets ke RAFM Manual dan Save As
+    output_file = add_sheets_to_rafm_manual(
+        rafm_manual_path=rafm_manual_path,
+        result_dict=result,
+        output_path=output_path,
+        output_filename=output_filename,
+        jenis=jenis
+    )
+    
+    if output_file:
+        print(f"\n🎉 SUCCESS: {os.path.basename(output_file)}")
+    else:
+        print(f"\n❌ FAILED: {filename}")
 
 
 def main(input_path):
+    """Main entry point"""
+    print("\n" + "="*60)
+    print("🔧 CONTROL 4 - RAFM OUTPUT PROCESSOR")
+    print("="*60)
+    
     start_time = time.time()
 
+    # Deteksi input
     if os.path.isfile(input_path):
         files = [input_path]
     elif os.path.isdir(input_path):
@@ -338,26 +341,27 @@ def main(input_path):
         return
 
     if not files:
-        print("📂 Tidak ada file .xlsx")
+        print("📂 Tidak ada file .xlsx ditemukan")
         return
 
-    print(f"🔧 Memproses {len(files)} file...\n")
+    print(f"📊 Ditemukan {len(files)} file untuk diproses\n")
 
-    # OPTIMASI: Proses sequential untuk reuse Excel instance
-    # (Parallel processing justru lebih lambat karena multiple Excel instances)
-    if len(files) == 1:
-        process_input_file(files[0])
-    else:
-        # Untuk multiple files, tetap sequential untuk share Excel instance
-        print("💡 Mode sequential (lebih cepat untuk multiple files)")
-        for f in files:
-            try:
-                process_input_file(f)
-            except Exception as e:
-                print(f"❌ Error: {e}")
+    # Process files
+    for idx, f in enumerate(files, 1):
+        print(f"\n[{idx}/{len(files)}] Processing...")
+        try:
+            process_input_file(f)
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
 
-    end_time = time.time()
-    print(f"\n⏲️ Total: {end_time - start_time:.2f} detik")
+    # Summary
+    elapsed = time.time() - start_time
+    print("\n" + "="*60)
+    print(f"⏲️  TOTAL WAKTU: {elapsed:.2f} detik")
+    print(f"📁 Processed: {len(files)} file(s)")
+    print("="*60)
 
 
 if __name__ == '__main__':
