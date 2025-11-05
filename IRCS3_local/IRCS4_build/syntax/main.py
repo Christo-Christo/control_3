@@ -6,6 +6,7 @@ import syntax.control_4_ul as ul
 import syntax.control_4_reas as reas
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
+import xlwings as xw
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment
 from openpyxl.utils.dataframe import dataframe_to_rows
@@ -187,6 +188,10 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
             
             print(f"    • Menambahkan sheet: {sheet_name}")
             
+            # FIX: Convert <NA> values to None sebelum tulis ke Excel
+            df = df.fillna('')  # Ganti NA dengan empty string
+            # Atau gunakan: df = df.replace({pd.NA: None, pd.NaT: None})
+            
             # Buat sheet baru
             if sheet_name in wb.sheetnames:
                 del wb[sheet_name]  # Hapus jika sudah ada
@@ -198,11 +203,18 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
                 # Control tanpa header
                 for r_idx, row in enumerate(df.values, start=1):
                     for c_idx, value in enumerate(row, start=1):
+                        # FIX: Handle pd.NA explicitly
+                        if pd.isna(value):
+                            value = None
                         ws.cell(row=r_idx, column=c_idx, value=value)
             else:
                 # Sheet lain dengan header
                 for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start=1):
                     for c_idx, value in enumerate(row, start=1):
+                        # FIX: Handle pd.NA explicitly
+                        if pd.isna(value):
+                            value = None
+                        
                         cell = ws.cell(row=r_idx, column=c_idx, value=value)
                         cell.border = thin_border
                         
