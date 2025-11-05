@@ -419,9 +419,27 @@ def main(params):
     folder_path_rafm = path_map.get('rafm', '')
     folder_path_uvsg = path_map.get('uvsg', '')
     rafm_manual_path = path_map.get('rafm manual', '')
+    argo_files_from_code = set(code['ARGO File Name'].astype(str).str.strip().str.lower())
+    rafm_files_from_code = set(code['RAFM File Name'].astype(str).str.strip().str.lower())
+    uvsg_files_from_code = set(code['UVSG File Name'].astype(str).str.strip().str.lower())
 
-    file_paths_argo = [f for f in glob.glob(os.path.join(folder_path_argo, '*.xlsx')) 
-                       if not os.path.basename(f).startswith('~')]
+    file_paths_argo = [
+        f for f in glob.glob(os.path.join(folder_path_argo, '*.xlsx'))
+        if os.path.splitext(os.path.basename(f))[0].lower() in argo_files_from_code
+        and not os.path.basename(f).startswith('~$')
+    ]
+
+    file_paths_rafm = [
+        f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx'))
+        if os.path.splitext(os.path.basename(f))[0].lower() in rafm_files_from_code
+        and not os.path.basename(f).startswith('~$')
+    ]
+
+    file_paths_uvsg = [
+        f for f in glob.glob(os.path.join(folder_path_uvsg, '*.xlsx'))
+        if os.path.splitext(os.path.basename(f))[0].lower() in uvsg_files_from_code
+        and not os.path.basename(f).startswith('~$')
+    ]
     
     optimal_workers = min(os.cpu_count() or 4, max(len(file_paths_argo), 1))
     
@@ -441,8 +459,6 @@ def main(params):
     if columns_to_drop:
         cf_argo = cf_argo.drop(columns=columns_to_drop)
     
-    file_paths_rafm = [f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx')) 
-                       if not os.path.basename(f).startswith('~')]
     file_entries = [(f, os.path.splitext(os.path.basename(f))[0], global_filter_rafm) 
                     for f in file_paths_rafm]
 
@@ -512,9 +528,6 @@ def main(params):
         cf_rafm[col] = cf_rafm[col].astype(str).str.replace(',', '').astype(float)
     cf_rafm['nattr_exp'] = cf_rafm['nattr_exp_acq'] + cf_rafm['nattr_exp_inv'] + cf_rafm['nattr_exp_maint']
     
-    file_paths_uvsg = [f for f in glob.glob(os.path.join(folder_path_uvsg, '*.xlsx')) 
-                       if not os.path.basename(f).startswith('~')]
-
     summary_rows_uvsg = []
     additional_summary_rows = []
     usar_summary_uvsg = []

@@ -67,6 +67,7 @@ def parse_numeric_fast(val):
     except:
         return None
 
+
 def process_argo_file(file_path):
     file_name_argo = os.path.splitext(os.path.basename(file_path))[0]
     
@@ -187,8 +188,20 @@ def main(params):
     folder_path_rafm = path_map.get('rafm', '')
     rafm_manual_path = path_map.get('rafm manual', '')
 
-    file_paths_argo = [f for f in glob.glob(os.path.join(folder_path_argo, '*.xlsx')) 
-                       if not os.path.basename(f).startswith('~$')]
+    argo_files_from_code = set(code['ARGO File Name'].astype(str).str.strip().str.lower())
+    rafm_files_from_code = set(code['RAFM File Name'].astype(str).str.strip().str.lower())
+
+    file_paths_argo = [
+        f for f in glob.glob(os.path.join(folder_path_argo, '*.xlsx'))
+        if os.path.splitext(os.path.basename(f))[0].lower() in argo_files_from_code
+        and not os.path.basename(f).startswith('~$')
+    ]
+
+    file_paths_rafm = [
+        f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx'))
+        if os.path.splitext(os.path.basename(f))[0].lower() in rafm_files_from_code
+        and not os.path.basename(f).startswith('~$')
+    ]
     
     optimal_workers = min(os.cpu_count() or 4, max(len(file_paths_argo), 1))
     
@@ -208,8 +221,6 @@ def main(params):
     if columns_to_drop:
         cf_argo = cf_argo.drop(columns=columns_to_drop)
 
-    file_paths_rafm = [f for f in glob.glob(os.path.join(folder_path_rafm, '*.xlsx')) 
-                       if not os.path.basename(f).startswith('~$')]
     file_entries = [(f, os.path.splitext(os.path.basename(f))[0]) for f in file_paths_rafm]
 
     with ProcessPoolExecutor(max_workers=optimal_workers) as executor:
