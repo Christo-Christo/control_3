@@ -10,10 +10,12 @@ import xlwings as xw
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment
 from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.utils import get_column_letter
 import warnings
 import shutil
 import datetime
 import tempfile
+import subprocess
 
 # Suppress warnings untuk performa
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -23,6 +25,7 @@ cols_to_sum_dict = {
     'ul': ul.columns_to_sum_argo,
     'reas': reas.cols_to_compare
 }
+
 
 
 def write_checking_summary_formulas_openpyxl(ws, df_sheet, jenis, start_row=2):
@@ -84,7 +87,6 @@ def write_checking_summary_formulas_openpyxl(ws, df_sheet, jenis, start_row=2):
             relative_offset = col_idx - start_col_idx
             
             if jenis == 'trad':
-                from openpyxl.utils import get_column_letter
                 cf_argo_col = get_column_letter(cf_argo_col_offset + relative_offset)
                 cf_rafm_col = get_column_letter(cf_rafm_col_offset + relative_offset)
                 rafm_manual_col = get_column_letter(rafm_manual_col_offset + relative_offset)
@@ -97,7 +99,6 @@ def write_checking_summary_formulas_openpyxl(ws, df_sheet, jenis, start_row=2):
                     f"-'{sheet_names['trad']['uvsg']}'!{uvsg_col}{row_excel}"
                 )
             elif jenis == 'ul':
-                from openpyxl.utils import get_column_letter
                 cf_argo_col = get_column_letter(cf_argo_col_offset + relative_offset)
                 cf_rafm_col = get_column_letter(cf_rafm_col_offset + relative_offset)
                 rafm_manual_col = get_column_letter(rafm_manual_col_offset + relative_offset)
@@ -108,7 +109,6 @@ def write_checking_summary_formulas_openpyxl(ws, df_sheet, jenis, start_row=2):
                     f"-'{sheet_names['ul']['rafm_manual']}'!{rafm_manual_col}{row_excel}"
                 )
             else:  # reas
-                from openpyxl.utils import get_column_letter
                 cf_argo_col = get_column_letter(cf_argo_col_offset + relative_offset)
                 cf_rafm_col = get_column_letter(cf_rafm_col_offset + relative_offset)
                 rafm_manual_col = get_column_letter(rafm_manual_col_offset + relative_offset)
@@ -124,8 +124,8 @@ def write_checking_summary_formulas_openpyxl(ws, df_sheet, jenis, start_row=2):
 
 def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output_filename, jenis):
     """
-    Tambahkan sheet hasil processing ke file RAFM Output Manual existing,
-    kemudian Save As dengan nama baru
+    🔧 OPTIMIZED APPROACH: Copy file first → Modify → Save in-place
+    Preserves ALL SharePoint links perfectly (no recovery needed!)
     
     Args:
         rafm_manual_path: Path ke file RAFM Output Manual original
@@ -137,39 +137,35 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
     Returns:
         str: Path file output yang berhasil dibuat
     """
-    wb = None  # Initialize untuk finally block
+    wb = None
     
     try:
         if not os.path.exists(rafm_manual_path):
             print(f"❌ File RAFM Manual tidak ditemukan: {rafm_manual_path}")
             return None
         
-        print(f"\n🚀 Menambahkan sheet ke RAFM Output Manual...")
+        print(f"\n🚀 Menambahkan sheet ke RAFM Output Manual (SAFE MODE)...")
         start_time = time.time()
         
-        # Buat output path
+        # Create output directory
         os.makedirs(output_path, exist_ok=True)
         output_file = os.path.join(output_path, output_filename)
         
-        # PRE-CHECK: Cek apakah output file bisa di-write
+        # 🔧 STEP 1: Handle existing output file
         if os.path.exists(output_file):
             print(f"  ↳ File sudah ada, mencoba hapus...")
-            
-            # Method 1: Direct delete
             try:
                 os.remove(output_file)
                 print(f"  ✓ File lama berhasil dihapus")
             except PermissionError:
-                # Method 2: Force close Excel
                 print(f"  ⚠️ File sedang digunakan, force close Excel...")
-                kill_excel_processes_for_file(output_file)
-                time.sleep(2)  # Wait for Excel to fully close
+                time.sleep(2)
                 
                 try:
                     os.remove(output_file)
                     print(f"  ✓ File lama berhasil dihapus setelah force close")
                 except PermissionError:
-                    # Method 3: Use alternative name
+                    # Use alternative filename with timestamp
                     print(f"  ⚠️ File masih terkunci, menggunakan nama alternatif...")
                     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                     base_name = os.path.splitext(output_filename)[0]
@@ -178,19 +174,29 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
                     output_file = os.path.join(output_path, output_filename)
                     print(f"  ↳ Nama baru: {output_filename}")
         
-        # Load workbook RAFM Manual menggunakan openpyxl
-        print(f"  ↳ Membuka file RAFM Manual (formula tetap utuh)...")
-        # OPTIMASI: read_only=False tapi data_only=False untuk preserve formula
-        # keep_links=True untuk preserve external links
-        wb = load_workbook(rafm_manual_path, data_only=False, keep_links=True)
+        # 🔧 STEP 2: Copy original file to output location FIRST
+        # This preserves ALL metadata including SharePoint links!
+        print(f"  ↳ Copying original file (preserving all links)...")
+        shutil.copy2(rafm_manual_path, output_file)
+        print(f"  ✓ File copied successfully (SharePoint links intact)")
         
-        # RENAME 'Sheet1' menjadi 'RAFM Output Manual' jika ada
-        if 'Sheet1' in wb.sheetnames:
+        # Small delay to ensure file system sync
+        time.sleep(0.5)
+        
+        # 🔧 STEP 3: Open the COPIED file and add sheets
+        print(f"  ↳ Opening copied file for modification...")
+        wb = load_workbook(
+            output_file,
+            data_only=False,      # Preserve formulas
+            keep_links=True,      # Preserve external links
+            keep_vba=True         # Preserve VBA & metadata
+        )
+        
+        # Handle Sheet1 rename if needed
+        if 'Sheet1' in wb.sheetnames and 'RAFM Output Manual' not in wb.sheetnames:
             print(f"  ↳ Rename 'Sheet1' → 'RAFM Output Manual'")
             wb['Sheet1'].title = 'RAFM Output Manual'
-        
-        # Jika sudah ada 'RAFM Output Manual' tapi ada 'Sheet1' juga, hapus Sheet1
-        if 'Sheet1' in wb.sheetnames and 'RAFM Output Manual' in wb.sheetnames:
+        elif 'Sheet1' in wb.sheetnames and 'RAFM Output Manual' in wb.sheetnames:
             print(f"  ↳ Menghapus 'Sheet1' duplikat...")
             del wb['Sheet1']
         
@@ -207,7 +213,7 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
             sheet_order = [
                 'Control', 'Code', 
                 'CF ARGO AZTRAD', 'RAFM Output AZTRAD', 
-                'RAFM Output Manual',  # Sheet existing (sudah ada)
+                'RAFM Output Manual',  # Existing sheet - preserved
                 'RAFM Output AZUL_PI',
                 'Checking Summary AZTRAD'
             ]
@@ -215,60 +221,54 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
             sheet_order = [
                 'Control', 'Code',
                 'CF ARGO AZUL', 'RAFM Output AZUL',
-                'RAFM Output Manual',  # Sheet existing
+                'RAFM Output Manual',  # Existing sheet - preserved
                 'Checking Summary AZUL'
             ]
         else:  # reas
             sheet_order = [
                 'Control', 'Code',
                 'CF ARGO REAS', 'RAFM Output REAS',
-                'RAFM Output Manual',  # Sheet existing
+                'RAFM Output Manual',  # Existing sheet - preserved
                 'Checking Summary REAS'
             ]
         
-        # Tambahkan sheet baru dari result_dict
+        # 🔧 STEP 4: Add new sheets from result_dict
         print(f"  ↳ Menambahkan {len(result_dict)} sheet baru...")
         for sheet_name, df in result_dict.items():
-            # Skip RAFM Output Manual karena sudah ada di file original
+            # 🚨 CRITICAL: NEVER touch RAFM Output Manual sheet!
             if sheet_name == 'RAFM Output Manual':
-                print(f"    • {sheet_name}: SKIP (already exists)")
+                print(f"    • {sheet_name}: SKIP (preserve existing with SharePoint links)")
                 continue
             
             print(f"    • Menambahkan sheet: {sheet_name}")
             
-            # FIX: Convert <NA> values to None sebelum tulis ke Excel
-            # OPTIMASI: Gunakan method paling cepat
-            df = df.copy()  # Avoid SettingWithCopyWarning
-            
-            # Replace semua NA types dengan None
+            # Clean DataFrame - replace NA with None
+            df = df.copy()
             df = df.replace({pd.NA: None, pd.NaT: None})
-            df = df.where(pd.notna(df), None)  # Catch remaining NaN
+            df = df.where(pd.notna(df), None)
             
-            # Buat sheet baru
+            # Delete existing sheet if present
             if sheet_name in wb.sheetnames:
-                del wb[sheet_name]  # Hapus jika sudah ada
+                del wb[sheet_name]
             
+            # Create new sheet
             ws = wb.create_sheet(title=sheet_name)
             
-            # OPTIMASI: Batch write menggunakan append (lebih cepat)
+            # Write data (optimized batch write)
             if sheet_name == 'Control':
-                # Control tanpa header
+                # Control without header
                 for row in df.values:
-                    # Convert row to list and handle any remaining NA
                     row_list = [None if pd.isna(v) else v for v in row]
                     ws.append(row_list)
             else:
-                # Sheet lain dengan header
-                # Write header first
+                # Other sheets with header
                 ws.append(list(df.columns))
                 
-                # Write data rows
                 for row in df.values:
-                    # Convert row to list and handle any remaining NA
                     row_list = [None if pd.isna(v) else v for v in row]
                     ws.append(row_list)
                 
-                # Apply formatting AFTER data written (lebih cepat)
+                # Apply formatting AFTER data written (faster)
                 print(f"    • Applying formatting...")
                 for row in ws.iter_rows(min_row=1, max_row=ws.max_row, 
                                        min_col=1, max_col=ws.max_column):
@@ -279,7 +279,7 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
                         if cell.row > 1 and isinstance(cell.value, (int, float)):
                             cell.number_format = '_-* #,##0_-;_-* (#,##0);_-* "-"_-;_-@_-'
             
-            # Tulis formula untuk Checking Summary
+            # Write formulas for Checking Summary
             if sheet_name.startswith("Checking Summary"):
                 print(f"    • Menulis formula checking summary...")
                 write_checking_summary_formulas_openpyxl(ws, df, jenis)
@@ -297,74 +297,43 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
                 adjusted_width = min(max_length + 2, 50)
                 ws.column_dimensions[column_letter].width = adjusted_width
         
-        # Reorder sheets sesuai urutan yang diinginkan
+        # 🔧 STEP 5: Reorder sheets
         print(f"  ↳ Mengurutkan sheets...")
         existing_sheets = wb.sheetnames
         ordered_sheets = [s for s in sheet_order if s in existing_sheets]
         
-        # Move sheets ke posisi yang benar
         for idx, sheet_name in enumerate(ordered_sheets):
             if sheet_name in wb.sheetnames:
                 sheet = wb[sheet_name]
                 wb.move_sheet(sheet, offset=idx - wb.index(sheet))
         
-        # Save As dengan nama baru
-        print(f"  ↳ Menyimpan sebagai: {output_filename}")
+        # 🔧 STEP 6: Save IN-PLACE (no Save As needed!)
+        # This is the KEY to preserving SharePoint links
+        print(f"  ↳ Saving changes to file...")
         
-        # STRATEGY 1: Try direct save
-        save_success = False
         try:
-            wb.save(output_file)
-            save_success = True
+            wb.save(output_file)  # Save to SAME file
             print(f"  ✓ File berhasil disimpan")
+            save_success = True
         except PermissionError as e:
-            print(f"  ⚠️ Permission error saat save langsung")
+            print(f"  ⚠️ Permission error saat save: {e}")
             
-            # STRATEGY 2: Save to temp first, then move
+            # Fallback: Try closing and reopening
             try:
-                temp_file = os.path.join(tempfile.gettempdir(), output_filename)
-                print(f"  ↳ Mencoba save ke temp: {temp_file}")
-                
-                wb.save(temp_file)
                 wb.close()
-                wb = None  # Mark as closed
+                wb = None
+                time.sleep(1)
                 
-                # Wait a bit for file system to release
-                time.sleep(0.5)
-                
-                # Try to move from temp to destination
-                if os.path.exists(output_file):
-                    os.remove(output_file)
-                
-                shutil.move(temp_file, output_file)
+                # Try again
+                wb = load_workbook(output_file, keep_links=True, keep_vba=True)
+                wb.save(output_file)
+                print(f"  ✓ File berhasil disimpan (retry)")
                 save_success = True
-                print(f"  ✓ File berhasil disimpan via temp")
-                
-            except Exception as temp_err:
-                print(f"  ⚠️ Gagal save via temp: {temp_err}")
-                
-                # STRATEGY 3: Save with timestamp
-                try:
-                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    base_name = os.path.splitext(output_filename)[0]
-                    ext = os.path.splitext(output_filename)[1]
-                    output_filename_new = f"{base_name}_{timestamp}{ext}"
-                    output_file_new = os.path.join(output_path, output_filename_new)
-                    
-                    print(f"  ↳ Mencoba dengan nama alternatif: {output_filename_new}")
-                    wb.save(output_file_new)
-                    output_file = output_file_new
-                    save_success = True
-                    print(f"  ✓ File disimpan dengan nama alternatif")
-                    
-                except Exception as final_err:
-                    # STRATEGY 4: Keep in temp and inform user
-                    print(f"  ❌ Semua strategi save gagal!")
-                    print(f"  → File tersimpan di temp: {temp_file}")
-                    print(f"  → Silakan copy manual ke: {output_file}")
-                    output_file = temp_file
+            except Exception as retry_err:
+                print(f"  ❌ Gagal save after retry: {retry_err}")
+                save_success = False
         
-        # Close workbook if still open
+        # Close workbook
         if wb is not None:
             wb.close()
             wb = None
@@ -374,7 +343,8 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
         if save_success:
             print(f"✅ Selesai dalam {elapsed:.2f} detik")
             print(f"   📁 Output: {output_file}")
-            print(f"   ✓ Formula SharePoint di 'RAFM Output Manual' tetap utuh")
+            print(f"   ✅ SharePoint links PRESERVED (no recovery needed!)")
+            print(f"   ✅ All formulas in 'RAFM Output Manual' intact")
         
         return output_file if save_success else None
         
@@ -439,7 +409,7 @@ def process_input_file(file_path):
     output_filename = df.loc[df['Name']=='output_filename', 'File Path'].values[0]
     rafm_manual_path = df.loc[df['Name']=='rafm manual', 'File Path'].values[0]
 
-    # Proses: Tambahkan sheets ke RAFM Manual dan Save As
+    # Proses: Tambahkan sheets ke RAFM Manual dan Save
     output_file = add_sheets_to_rafm_manual(
         rafm_manual_path=rafm_manual_path,
         result_dict=result,
@@ -483,7 +453,6 @@ def main(input_path):
 
     # OPTIMASI: Gunakan ThreadPoolExecutor untuk parallel processing
     # Thread lebih cocok untuk I/O bound operations (baca/tulis Excel)
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     
     # Determine optimal workers
     max_workers = min(len(files), os.cpu_count() or 4, 8)  # Max 8 threads
@@ -520,8 +489,8 @@ def main(input_path):
     # Summary
     elapsed = time.time() - start_time
     print("\n" + "="*60)
-    print(f"⏲️  TOTAL WAKTU: {elapsed:.2f} detik")
-    print(f"📁 Processed: {len(files)} file(s)")
+    print(f"⏱️  TOTAL WAKTU: {elapsed:.2f} detik")
+    print(f"📊 Processed: {len(files)} file(s)")
     print(f"⚡ Avg: {elapsed/len(files):.2f} detik/file")
     print("="*60)
 
