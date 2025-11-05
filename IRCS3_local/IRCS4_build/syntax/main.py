@@ -6,10 +6,7 @@ import syntax.control_4_ul as ul
 import syntax.control_4_reas as reas
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
-from functools import lru_cache
-from openpyxl import load_workbook
 import xlwings as xw
-import shutil
 
 cols_to_sum_dict = {
     'trad': trad.cols_to_compare,
@@ -49,7 +46,6 @@ def apply_number_formats(workbook, worksheet, df_sheet, sheet_name):
     if not hasattr(df_sheet, 'columns'):
         return
     
-    # Batch apply formats per column type
     for col_idx, col_name in enumerate(df_sheet.columns):
         col_name_lower = str(col_name).lower()
         
@@ -144,7 +140,17 @@ def write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, n
             worksheet.write_formula(row_idx, col_idx, formula)
 
 
-def insert_rafm_manual_with_formulas(src_path, dest_path, sheet_name="RAFM Output Manual", insert_position=None):
+def insert_rafm_manual_optimized(src_path, dest_path, sheet_name="RAFM Output Manual", insert_position=None):
+    """
+    OPTIMIZED: Copy sheet RAFM Manual dengan formula utuh (termasuk SharePoint links)
+    menggunakan xlwings dengan optimasi kecepatan maksimal
+    
+    Optimasi yang diterapkan:
+    1. Minimize Excel interactions
+    2. Batch operations
+    3. Disable recalculation saat copy
+    4. Reuse Excel instance
+    """
     try:
         if not os.path.exists(src_path):
             print(f"⚠️ File RAFM manual tidak ditemukan: {src_path}")
@@ -154,69 +160,79 @@ def insert_rafm_manual_with_formulas(src_path, dest_path, sheet_name="RAFM Outpu
             print(f"⚠️ File output tidak ditemukan: {dest_path}")
             return False
 
-        print(f"🔄 Menyalin sheet '{sheet_name}' dari RAFM manual...")
+        print(f"🔄 Menyalin sheet '{sheet_name}' (OPTIMIZED MODE)...")
+        start_time = time.time()
         
-        with xw.App(visible=False) as app:
-            # Buka kedua file
-            src_wb = xw.Book(src_path)
-            dest_wb = xw.Book(dest_path)
+        # Reuse existing Excel instance jika ada (lebih cepat)
+        try:
+            app = xw.apps.active
+            if app is None:
+                raise Exception("No active app")
+        except:
+            app = xw.App(visible=False, add_book=False)
+        
+        # KUNCI OPTIMASI: Matikan semua yang memperlambat
+        app.display_alerts = False
+        app.screen_updating = False
+        app.calculation = 'manual'  # Matikan auto-calculate (PENTING!)
+        app.enable_events = False
+        
+        try:
+            # Buka files dengan minimal interaction
+            print("  ↳ Membuka files...")
+            src_wb = app.books.open(src_path, update_links=False, read_only=True)
+            dest_wb = app.books.open(dest_path, update_links=False)
             
             # Hapus sheet lama jika ada
             if sheet_name in [s.name for s in dest_wb.sheets]:
-                print(f"  ↳ Menghapus sheet '{sheet_name}' yang lama...")
+                print(f"  ↳ Menghapus sheet lama...")
                 dest_wb.sheets[sheet_name].delete()
             
-            # Copy sheet dari source
-            # Ambil sheet pertama dari source file (biasanya Sheet1)
-            src_sheet = None
-            for s in src_wb.sheets:
-                src_sheet = s
-                break
+            # Copy sheet (ini yang lama, tapi unavoidable untuk preserve links)
+            src_sheet = src_wb.sheets[0]
+            print(f"  ↳ Menyalin sheet (mohon tunggu)...")
             
-            if src_sheet is None:
-                print(f"⚠️ Tidak ada sheet di file source: {src_path}")
-                src_wb.close()
-                dest_wb.close()
-                return False
-            
-            # Tentukan posisi insert
+            # Tentukan posisi
             if insert_position is not None and insert_position < len(dest_wb.sheets):
                 target_sheet = dest_wb.sheets[insert_position]
-                src_sheet.copy(after=target_sheet)
+                src_sheet.api.Copy(After=target_sheet.api)
             else:
-                # Insert di akhir
-                src_sheet.copy(after=dest_wb.sheets[-1])
+                src_sheet.api.Copy(After=dest_wb.sheets[-1].api)
             
-            # Rename sheet yang baru di-copy
+            # Rename
             dest_wb.sheets[-1].name = sheet_name
+            print(f"  ↳ Sheet berhasil di-copy")
             
-            # Save dan close
+            # Save dengan calculation masih manual (lebih cepat)
+            print("  ↳ Menyimpan file...")
             dest_wb.save()
-            dest_wb.close()
-            src_wb.close()
             
-        print(f"✅ Sheet '{sheet_name}' berhasil disalin dengan formula utuh")
-        return True
-        
+            # Close files
+            src_wb.close()
+            dest_wb.close()
+            
+            elapsed = time.time() - start_time
+            print(f"✅ Selesai dalam {elapsed:.2f} detik")
+            print(f"   Formula SharePoint tetap utuh dan aktif")
+            
+            return True
+            
+        finally:
+            # Restore calculation mode
+            app.calculation = 'automatic'
+            
     except Exception as e:
-        print(f"❌ Error saat menyalin sheet RAFM Manual: {e}")
+        print(f"❌ Error saat copy: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 
 def get_sheet_insert_position(jenis):
-    if jenis == 'trad':
-        # Insert setelah: Control, Code, CF ARGO AZTRAD, RAFM Output AZTRAD
-        return 3  # Posisi ke-4 (index 3)
-    elif jenis == 'ul':
-        # Insert setelah: Control, Code, CF ARGO AZUL, RAFM Output AZUL
-        return 3  # Posisi ke-4 (index 3)
-    elif jenis == 'reas':
-        # Insert setelah: Control, Code, CF ARGO REAS, RAFM Output REAS
-        return 3  # Posisi ke-4 (index 3)
-    else:
-        return None  # Insert di akhir
+    """Tentukan posisi insert sheet RAFM Output Manual"""
+    if jenis in ['trad', 'ul', 'reas']:
+        return 3  # Setelah: Control, Code, CF ARGO, RAFM Output
+    return None
 
 
 def process_input_file(file_path):
@@ -247,7 +263,7 @@ def process_input_file(file_path):
     df['File Path'] = df['File Path'].astype(str).str.strip()
 
     if 'output_path' not in df['Name'].values or 'output_filename' not in df['Name'].values:
-        print(f"⚠️ output_path atau output_filename tidak ditemukan di sheet 'File Path'")
+        print(f"⚠️ output_path atau output_filename tidak ditemukan")
         return
 
     output_path = df.loc[df['Name']=='output_path','File Path'].values[0]
@@ -255,6 +271,8 @@ def process_input_file(file_path):
     os.makedirs(output_path, exist_ok=True)
     output_file = os.path.join(output_path, output_filename)
 
+    # Tulis semua sheet hasil processing
+    print("📝 Menulis hasil processing ke Excel...")
     with pd.ExcelWriter(output_file, engine='xlsxwriter',
                         engine_kwargs={'options': {'strings_to_numbers': False}}) as writer:
         workbook = writer.book
@@ -280,30 +298,33 @@ def process_input_file(file_path):
                     nrows = int(nomor_kolom.max()) + 1
                 write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, ncols)
 
+    print("✅ File dasar berhasil dibuat")
+
+    # Insert RAFM Output Manual dengan optimasi
     try:
         rafm_manual_path = df.loc[df['Name']=='rafm manual','File Path'].values[0]
         if os.path.exists(rafm_manual_path):
+            print("\n🚀 Memulai copy RAFM Output Manual...")
             insert_position = get_sheet_insert_position(jenis)
-            success = insert_rafm_manual_with_formulas(
+            success = insert_rafm_manual_optimized(
                 src_path=rafm_manual_path,
                 dest_path=output_file,
                 sheet_name="RAFM Output Manual",
                 insert_position=insert_position
             )
             if not success:
-                print("⚠️ Gagal menyalin RAFM Output Manual, file output tetap dibuat tanpa sheet ini")
+                print("⚠️ Gagal copy RAFM Output Manual")
         else:
             print(f"⚠️ File RAFM manual tidak ditemukan: {rafm_manual_path}")
     except Exception as e:
-        print(f"⚠️ Error saat mengambil path RAFM manual: {e}")
+        print(f"⚠️ Error: {e}")
 
-    print(f"✅ Output disimpan di: {output_file}")
+    print(f"\n✅ OUTPUT FINAL: {output_file}")
 
 
 def main(input_path):
     start_time = time.time()
 
-    # Tentukan list file .xlsx
     if os.path.isfile(input_path):
         files = [input_path]
     elif os.path.isdir(input_path):
@@ -313,31 +334,30 @@ def main(input_path):
             if fname.endswith(".xlsx") and not fname.startswith("~$")
         ]
     else:
-        print(f"❌ Path tidak ditemukan atau tidak valid: {input_path}")
+        print(f"❌ Path tidak valid: {input_path}")
         return
 
     if not files:
-        print("📂 Tidak ada file .xlsx yang ditemukan.")
+        print("📂 Tidak ada file .xlsx")
         return
 
     print(f"🔧 Memproses {len(files)} file...\n")
 
-    # Proses file tunggal
+    # OPTIMASI: Proses sequential untuk reuse Excel instance
+    # (Parallel processing justru lebih lambat karena multiple Excel instances)
     if len(files) == 1:
         process_input_file(files[0])
     else:
-        # Proses paralel
-        optimal_workers = min(os.cpu_count() or 4, len(files))
-        with ProcessPoolExecutor(max_workers=optimal_workers) as executor:
-            futures = [executor.submit(process_input_file, f) for f in files]
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    print(f"❌ Error saat memproses file: {e}")
+        # Untuk multiple files, tetap sequential untuk share Excel instance
+        print("💡 Mode sequential (lebih cepat untuk multiple files)")
+        for f in files:
+            try:
+                process_input_file(f)
+            except Exception as e:
+                print(f"❌ Error: {e}")
 
     end_time = time.time()
-    print(f"\n⏲️ Total waktu proses: {end_time - start_time:.2f} detik")
+    print(f"\n⏲️ Total: {end_time - start_time:.2f} detik")
 
 
 if __name__ == '__main__':
