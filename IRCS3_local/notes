@@ -1,13 +1,26 @@
-❌ Error: Cannot convert <NA> to Excel
+
+🚀 Menambahkan sheet ke RAFM Output Manual...
+  ↳ Membuka file RAFM Manual (formula tetap utuh)...
+  ↳ Menambahkan 6 sheet baru...
+    • Menambahkan sheet: Control
+    • Menambahkan sheet: Code
+    • Menambahkan sheet: CF ARGO AZTRAD
+    • Menambahkan sheet: RAFM Output AZTRAD
+    • Menambahkan sheet: RAFM Output AZUL_PI
+    • Menambahkan sheet: Checking Summary AZTRAD
+    • Menulis formula checking summary...
+  ↳ Mengurutkan sheets...
+  ↳ Menyimpan sebagai: trad con Q3 25.xlsx
+❌ Error: [Errno 13] Permission denied: 'P:\\13. Employee Folder\\Christo\\control 4\\Q3 25\\Output\\trad con Q3 25.xlsx'
 Traceback (most recent call last):
-  File "d:\RUN 3\control_3\IRCS3_local\IRCS4_build\syntax\main.py", line 206, in add_sheets_to_rafm_manual
-    cell = ws.cell(row=r_idx, column=c_idx, value=value)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\christo\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\openpyxl\worksheet\worksheet.py", line 247, in cell
-    cell.value = value
-    ^^^^^^^^^^
-  File "C:\Users\christo\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\openpyxl\cell\cell.py", line 218, in value
-    self._bind_value(value)
-  File "C:\Users\christo\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\openpyxl\cell\cell.py", line 187, in _bind_value
-    raise ValueError("Cannot convert {0!r} to Excel".format(value))
-ValueError: Cannot convert <NA> to Excel
+  File "d:\RUN 3\control_3\IRCS3_local\IRCS4_build\syntax\main.py", line 256, in add_sheets_to_rafm_manual
+    wb.save(output_file)
+  File "C:\Users\christo\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\openpyxl\workbook\workbook.py", line 386, in save
+    save_workbook(self, filename)
+  File "C:\Users\christo\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\openpyxl\writer\excel.py", line 291, in save_workbook
+    archive = ZipFile(filename, 'w', ZIP_DEFLATED, allowZip64=True)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\zipfile.py", line 1294, in __init__
+    self.fp = io.open(file, filemode)
+              ^^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 13] Permission denied: 'P:\\13. Employee Folder\\Christo\\control 4\\Q3 25\\Output\\trad con Q3 25.xlsx'
