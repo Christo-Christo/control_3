@@ -186,7 +186,6 @@ def main(params):
 
     folder_path_argo = path_map.get('argo', '')
     folder_path_rafm = path_map.get('rafm', '')
-    rafm_manual_path = path_map.get('rafm manual', '')
 
     argo_files_from_code = set(code['ARGO File Name'].astype(str).str.strip().str.lower())
     rafm_files_from_code = set(code['RAFM File Name'].astype(str).str.strip().str.lower())
@@ -262,9 +261,6 @@ def main(params):
 
     cf_rafm['dac_cov_units'] = cf_rafm['cov_units']
     
-    rafm_manual = pd.read_excel(rafm_manual_path, sheet_name='Sheet1', engine='openpyxl')
-    rafm_manual = rafm_manual.drop(columns=['No']).fillna(0)
-
     final = code.copy()
     for col in cols_to_compare:
         if col not in code.columns:
@@ -305,8 +301,6 @@ def main(params):
     
     index_labels_rafm = list(range(1, len(cf_rafm)+1))
     cf_rafm.insert(0, 'No', index_labels_rafm)
-    index_labels_manual = list(range(1, len(rafm_manual)+1))
-    rafm_manual.insert(0, 'No', index_labels_manual)
     
     mask = final['RAFM File Name'].astype(str).str.contains('_ori', regex=True, na=False)
     final = final[~mask].copy()
@@ -333,17 +327,11 @@ def main(params):
     columns_cf_rafm = [k for k in columns_cf_rafm if k in cf_rafm.columns]
     cf_rafm = cf_rafm[columns_cf_rafm]
 
-    columns_name_manual = list(rafm_manual.columns[:2])
-    columns_rafm_manual =  columns_name_manual + cols_to_compare
-    columns_rafm_manual = [k for k in columns_rafm_manual if k in rafm_manual.columns]
-    rafm_manual = rafm_manual[columns_rafm_manual] 
-
     return {
         'Control': control,
         'Code': code,
         "CF ARGO REAS": cf_argo,
         "RAFM Output REAS": cf_rafm,
-        "RAFM Output Manual": rafm_manual,
         "Checking Summary REAS": final
     }
 

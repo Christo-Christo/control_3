@@ -8,6 +8,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
 from functools import lru_cache
 from openpyxl import load_workbook
+import xlwings as xw
+import shutil
 
 cols_to_sum_dict = {
     'trad': trad.cols_to_compare,
@@ -60,7 +62,6 @@ def apply_number_formats(workbook, worksheet, df_sheet, sheet_name):
 
 
 def write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, ncols):
-    # Nama sheet sesuai logika lama
     sheet_names = {
         'trad': {
             'cf_argo': 'CF ARGO AZTRAD',
@@ -80,28 +81,27 @@ def write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, n
         }
     }
 
-    for row_idx in range(1, nrows):  # mulai dari baris ke-2 (Excel row 2)
+    for row_idx in range(1, nrows):
         row_excel = row_idx + 1
 
-        # Tentukan kolom dasar dan offset per jenis
         if jenis == 'trad':
-            start_col_idx = 4  # E (0-based index)
-            cf_argo_col_offset = 2  # kolom C
-            cf_rafm_col_offset = 6  # kolom G
-            rafm_manual_col_offset = 6  # ✅ kolom G
-            uvsg_col_offset = 6  # kolom G
+            start_col_idx = 4
+            cf_argo_col_offset = 2
+            cf_rafm_col_offset = 6
+            rafm_manual_col_offset = 6
+            uvsg_col_offset = 6
 
         elif jenis == 'ul':
-            start_col_idx = 3  # D (0-based index)
-            cf_argo_col_offset = 2  # kolom C
-            cf_rafm_col_offset = 5  # kolom F
-            rafm_manual_col_offset = 5  # ✅ kolom F
+            start_col_idx = 3
+            cf_argo_col_offset = 2
+            cf_rafm_col_offset = 5
+            rafm_manual_col_offset = 5
 
         else:  # reas
-            start_col_idx = 3  # D (0-based index)
-            cf_argo_col_offset = 2  # kolom C
-            cf_rafm_col_offset = 2  # kolom C
-            rafm_manual_col_offset = 2  # ✅ kolom C
+            start_col_idx = 3
+            cf_argo_col_offset = 2
+            cf_rafm_col_offset = 2
+            rafm_manual_col_offset = 2
 
         for col_idx in range(start_col_idx, ncols):
             relative_offset = col_idx - start_col_idx
@@ -143,30 +143,81 @@ def write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, n
 
             worksheet.write_formula(row_idx, col_idx, formula)
 
-import xlwings as xw
 
-def replace_rafm_output_manual_with_linked_sheet(src_path, dest_path, sheet_name="RAFM Output Manual"):
+def insert_rafm_manual_with_formulas(src_path, dest_path, sheet_name="RAFM Output Manual", insert_position=None):
     try:
         if not os.path.exists(src_path):
-            print(f"⚠️ File source RAFM manual tidak ditemukan: {src_path}")
-            return
+            print(f"⚠️ File RAFM manual tidak ditemukan: {src_path}")
+            return False
+            
         if not os.path.exists(dest_path):
             print(f"⚠️ File output tidak ditemukan: {dest_path}")
-            return
+            return False
+
+        print(f"🔄 Menyalin sheet '{sheet_name}' dari RAFM manual...")
+        
         with xw.App(visible=False) as app:
+            # Buka kedua file
             src_wb = xw.Book(src_path)
             dest_wb = xw.Book(dest_path)
+            
+            # Hapus sheet lama jika ada
             if sheet_name in [s.name for s in dest_wb.sheets]:
+                print(f"  ↳ Menghapus sheet '{sheet_name}' yang lama...")
                 dest_wb.sheets[sheet_name].delete()
-            src_sheet = src_wb.sheets[0]
-            src_sheet.copy(after=dest_wb.sheets[-1])
+            
+            # Copy sheet dari source
+            # Ambil sheet pertama dari source file (biasanya Sheet1)
+            src_sheet = None
+            for s in src_wb.sheets:
+                src_sheet = s
+                break
+            
+            if src_sheet is None:
+                print(f"⚠️ Tidak ada sheet di file source: {src_path}")
+                src_wb.close()
+                dest_wb.close()
+                return False
+            
+            # Tentukan posisi insert
+            if insert_position is not None and insert_position < len(dest_wb.sheets):
+                target_sheet = dest_wb.sheets[insert_position]
+                src_sheet.copy(after=target_sheet)
+            else:
+                # Insert di akhir
+                src_sheet.copy(after=dest_wb.sheets[-1])
+            
+            # Rename sheet yang baru di-copy
             dest_wb.sheets[-1].name = sheet_name
+            
+            # Save dan close
             dest_wb.save()
             dest_wb.close()
             src_wb.close()
-        print(f"🧩 Sheet '{sheet_name}' berhasil diganti dari RAFM manual (formula-link intact).")
+            
+        print(f"✅ Sheet '{sheet_name}' berhasil disalin dengan formula utuh")
+        return True
+        
     except Exception as e:
-        print(f"⚠️ Gagal mengganti RAFM Output Manual: {e}")
+        print(f"❌ Error saat menyalin sheet RAFM Manual: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def get_sheet_insert_position(jenis):
+    if jenis == 'trad':
+        # Insert setelah: Control, Code, CF ARGO AZTRAD, RAFM Output AZTRAD
+        return 3  # Posisi ke-4 (index 3)
+    elif jenis == 'ul':
+        # Insert setelah: Control, Code, CF ARGO AZUL, RAFM Output AZUL
+        return 3  # Posisi ke-4 (index 3)
+    elif jenis == 'reas':
+        # Insert setelah: Control, Code, CF ARGO REAS, RAFM Output REAS
+        return 3  # Posisi ke-4 (index 3)
+    else:
+        return None  # Insert di akhir
+
 
 def process_input_file(file_path):
     filename = os.path.basename(file_path).lower()
@@ -184,6 +235,7 @@ def process_input_file(file_path):
         return
 
     print(f"\n📄 Memproses: {filename} (jenis: {jenis})")
+    
     try:
         df = pd.read_excel(file_path, sheet_name='File Path')
     except Exception as e:
@@ -203,7 +255,6 @@ def process_input_file(file_path):
     os.makedirs(output_path, exist_ok=True)
     output_file = os.path.join(output_path, output_filename)
 
-    # -------- Tulis semua sheet ke Excel --------
     with pd.ExcelWriter(output_file, engine='xlsxwriter',
                         engine_kwargs={'options': {'strings_to_numbers': False}}) as writer:
         workbook = writer.book
@@ -212,6 +263,7 @@ def process_input_file(file_path):
                 df_sheet.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
             else:
                 df_sheet.to_excel(writer, sheet_name=sheet_name, index=False, header=True)
+            
             worksheet = writer.sheets[sheet_name]
             auto_adjust_column_width(worksheet, df_sheet)
             apply_number_formats(workbook, worksheet, df_sheet, sheet_name)
@@ -228,26 +280,27 @@ def process_input_file(file_path):
                     nrows = int(nomor_kolom.max()) + 1
                 write_checking_summary_formulas(worksheet, df_sheet, result, jenis, nrows, ncols)
 
-    # -------- Ganti RAFM Output Manual langsung pakai xlwings --------
     try:
         rafm_manual_path = df.loc[df['Name']=='rafm manual','File Path'].values[0]
         if os.path.exists(rafm_manual_path):
-            replace_rafm_output_manual_with_linked_sheet(
+            insert_position = get_sheet_insert_position(jenis)
+            success = insert_rafm_manual_with_formulas(
                 src_path=rafm_manual_path,
                 dest_path=output_file,
-                sheet_name="RAFM Output Manual"
+                sheet_name="RAFM Output Manual",
+                insert_position=insert_position
             )
+            if not success:
+                print("⚠️ Gagal menyalin RAFM Output Manual, file output tetap dibuat tanpa sheet ini")
         else:
-            print("⚠️ File RAFM manual tidak ditemukan, sheet RAFM Output Manual tidak diganti.")
+            print(f"⚠️ File RAFM manual tidak ditemukan: {rafm_manual_path}")
     except Exception as e:
-        print(f"⚠️ Tidak bisa mengganti sheet RAFM Output Manual: {e}")
+        print(f"⚠️ Error saat mengambil path RAFM manual: {e}")
 
     print(f"✅ Output disimpan di: {output_file}")
 
-def main(input_path):
-    import time
-    from concurrent.futures import ProcessPoolExecutor, as_completed
 
+def main(input_path):
     start_time = time.time()
 
     # Tentukan list file .xlsx
@@ -285,3 +338,11 @@ def main(input_path):
 
     end_time = time.time()
     print(f"\n⏲️ Total waktu proses: {end_time - start_time:.2f} detik")
+
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) > 1:
+        main(sys.argv[1])
+    else:
+        print("Usage: python main.py <input_file_or_folder>")

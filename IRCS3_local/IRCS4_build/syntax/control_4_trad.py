@@ -418,7 +418,6 @@ def main(params):
     folder_path_argo = path_map.get('argo', '')
     folder_path_rafm = path_map.get('rafm', '')
     folder_path_uvsg = path_map.get('uvsg', '')
-    rafm_manual_path = path_map.get('rafm manual', '')
     argo_files_from_code = set(code['ARGO File Name'].astype(str).str.strip().str.lower())
     rafm_files_from_code = set(code['RAFM File Name'].astype(str).str.strip().str.lower())
     uvsg_files_from_code = set(code['UVSG File Name'].astype(str).str.strip().str.lower())
@@ -588,9 +587,6 @@ def main(params):
     else:
         uvsg = uvsg_merged.copy()
     
-    rafm_manual = pd.read_excel(rafm_manual_path, sheet_name='Sheet1', engine='openpyxl')
-    rafm_manual = rafm_manual.drop(columns=['No','Update (Y/N)','Shift Dur','Cohort','C_sar'])
-    rafm_manual = rafm_manual.fillna(0)
 
     final = code.copy()
     for col in cols_to_compare:
@@ -643,8 +639,7 @@ def main(params):
     cf_argo = pd.concat([cf_argo, sign_logic], ignore_index=True)
     cf_argo.loc[cf_argo.index[-1], 'ARGO File Name'] = 'Sign Logic'
     
-    index_labels_manual = list(range(1, len(rafm_manual)+1))
-    rafm_manual.insert(0, 'No', index_labels_manual)
+
     index_labels_final = list(range(1, len(final)+1))
     final.insert(0, 'No', index_labels_final)
 
@@ -677,11 +672,6 @@ def main(params):
     columns_cf_rafm = [k for k in columns_cf_rafm if k in cf_rafm.columns]
     cf_rafm = cf_rafm[columns_cf_rafm]
 
-    columns_name_manual = list(rafm_manual.columns[:2])
-    columns_rafm_manual =  columns_name_manual + cols_to_compare
-    columns_rafm_manual = [k for k in columns_rafm_manual if k in rafm_manual.columns]
-    rafm_manual = rafm_manual[columns_rafm_manual]
-
     columns_name_uvsg = list(uvsg.columns[:6])
     columns_uvsg =  columns_name_uvsg + cols_to_compare
     columns_uvsg = [k for k in columns_uvsg if k in uvsg.columns]
@@ -692,7 +682,6 @@ def main(params):
         'Code': mapping,
         "CF ARGO AZTRAD": cf_argo,
         "RAFM Output AZTRAD": cf_rafm,
-        "RAFM Output Manual": rafm_manual,
         "RAFM Output AZUL_PI": uvsg,
         "Checking Summary AZTRAD": final
     }
