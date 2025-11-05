@@ -4,12 +4,19 @@ from xlsxwriter.utility import xl_col_to_name
 import syntax.control_4_trad as trad
 import syntax.control_4_ul as ul
 import syntax.control_4_reas as reas
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import xlwings as xw
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment
 from openpyxl.utils.dataframe import dataframe_to_rows
+import warnings
+import shutil
+import datetime
+import tempfile
+
+# Suppress warnings untuk performa
+warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
 cols_to_sum_dict = {
     'trad': trad.cols_to_compare,
@@ -130,6 +137,8 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
     Returns:
         str: Path file output yang berhasil dibuat
     """
+    wb = None  # Initialize untuk finally block
+    
     try:
         if not os.path.exists(rafm_manual_path):
             print(f"❌ File RAFM Manual tidak ditemukan: {rafm_manual_path}")
@@ -142,9 +151,48 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
         os.makedirs(output_path, exist_ok=True)
         output_file = os.path.join(output_path, output_filename)
         
+        # PRE-CHECK: Cek apakah output file bisa di-write
+        if os.path.exists(output_file):
+            print(f"  ↳ File sudah ada, mencoba hapus...")
+            
+            # Method 1: Direct delete
+            try:
+                os.remove(output_file)
+                print(f"  ✓ File lama berhasil dihapus")
+            except PermissionError:
+                # Method 2: Force close Excel
+                print(f"  ⚠️ File sedang digunakan, force close Excel...")
+                kill_excel_processes_for_file(output_file)
+                time.sleep(2)  # Wait for Excel to fully close
+                
+                try:
+                    os.remove(output_file)
+                    print(f"  ✓ File lama berhasil dihapus setelah force close")
+                except PermissionError:
+                    # Method 3: Use alternative name
+                    print(f"  ⚠️ File masih terkunci, menggunakan nama alternatif...")
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    base_name = os.path.splitext(output_filename)[0]
+                    ext = os.path.splitext(output_filename)[1]
+                    output_filename = f"{base_name}_{timestamp}{ext}"
+                    output_file = os.path.join(output_path, output_filename)
+                    print(f"  ↳ Nama baru: {output_filename}")
+        
         # Load workbook RAFM Manual menggunakan openpyxl
         print(f"  ↳ Membuka file RAFM Manual (formula tetap utuh)...")
-        wb = load_workbook(rafm_manual_path)
+        # OPTIMASI: read_only=False tapi data_only=False untuk preserve formula
+        # keep_links=True untuk preserve external links
+        wb = load_workbook(rafm_manual_path, data_only=False, keep_links=True)
+        
+        # RENAME 'Sheet1' menjadi 'RAFM Output Manual' jika ada
+        if 'Sheet1' in wb.sheetnames:
+            print(f"  ↳ Rename 'Sheet1' → 'RAFM Output Manual'")
+            wb['Sheet1'].title = 'RAFM Output Manual'
+        
+        # Jika sudah ada 'RAFM Output Manual' tapi ada 'Sheet1' juga, hapus Sheet1
+        if 'Sheet1' in wb.sheetnames and 'RAFM Output Manual' in wb.sheetnames:
+            print(f"  ↳ Menghapus 'Sheet1' duplikat...")
+            del wb['Sheet1']
         
         # Border style untuk formatting
         thin_border = Border(
@@ -189,8 +237,12 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
             print(f"    • Menambahkan sheet: {sheet_name}")
             
             # FIX: Convert <NA> values to None sebelum tulis ke Excel
-            df = df.fillna('')  # Ganti NA dengan empty string
-            # Atau gunakan: df = df.replace({pd.NA: None, pd.NaT: None})
+            # OPTIMASI: Gunakan method paling cepat
+            df = df.copy()  # Avoid SettingWithCopyWarning
+            
+            # Replace semua NA types dengan None
+            df = df.replace({pd.NA: None, pd.NaT: None})
+            df = df.where(pd.notna(df), None)  # Catch remaining NaN
             
             # Buat sheet baru
             if sheet_name in wb.sheetnames:
@@ -198,28 +250,33 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
             
             ws = wb.create_sheet(title=sheet_name)
             
-            # Tulis data
+            # OPTIMASI: Batch write menggunakan append (lebih cepat)
             if sheet_name == 'Control':
                 # Control tanpa header
-                for r_idx, row in enumerate(df.values, start=1):
-                    for c_idx, value in enumerate(row, start=1):
-                        # FIX: Handle pd.NA explicitly
-                        if pd.isna(value):
-                            value = None
-                        ws.cell(row=r_idx, column=c_idx, value=value)
+                for row in df.values:
+                    # Convert row to list and handle any remaining NA
+                    row_list = [None if pd.isna(v) else v for v in row]
+                    ws.append(row_list)
             else:
                 # Sheet lain dengan header
-                for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start=1):
-                    for c_idx, value in enumerate(row, start=1):
-                        # FIX: Handle pd.NA explicitly
-                        if pd.isna(value):
-                            value = None
-                        
-                        cell = ws.cell(row=r_idx, column=c_idx, value=value)
+                # Write header first
+                ws.append(list(df.columns))
+                
+                # Write data rows
+                for row in df.values:
+                    # Convert row to list and handle any remaining NA
+                    row_list = [None if pd.isna(v) else v for v in row]
+                    ws.append(row_list)
+                
+                # Apply formatting AFTER data written (lebih cepat)
+                print(f"    • Applying formatting...")
+                for row in ws.iter_rows(min_row=1, max_row=ws.max_row, 
+                                       min_col=1, max_col=ws.max_column):
+                    for cell in row:
                         cell.border = thin_border
                         
-                        # Format accounting untuk numeric columns
-                        if r_idx > 1 and isinstance(value, (int, float)):
+                        # Format accounting untuk numeric columns (skip header)
+                        if cell.row > 1 and isinstance(cell.value, (int, float)):
                             cell.number_format = '_-* #,##0_-;_-* (#,##0);_-* "-"_-;_-@_-'
             
             # Tulis formula untuk Checking Summary
@@ -253,21 +310,87 @@ def add_sheets_to_rafm_manual(rafm_manual_path, result_dict, output_path, output
         
         # Save As dengan nama baru
         print(f"  ↳ Menyimpan sebagai: {output_filename}")
-        wb.save(output_file)
-        wb.close()
+        
+        # STRATEGY 1: Try direct save
+        save_success = False
+        try:
+            wb.save(output_file)
+            save_success = True
+            print(f"  ✓ File berhasil disimpan")
+        except PermissionError as e:
+            print(f"  ⚠️ Permission error saat save langsung")
+            
+            # STRATEGY 2: Save to temp first, then move
+            try:
+                temp_file = os.path.join(tempfile.gettempdir(), output_filename)
+                print(f"  ↳ Mencoba save ke temp: {temp_file}")
+                
+                wb.save(temp_file)
+                wb.close()
+                wb = None  # Mark as closed
+                
+                # Wait a bit for file system to release
+                time.sleep(0.5)
+                
+                # Try to move from temp to destination
+                if os.path.exists(output_file):
+                    os.remove(output_file)
+                
+                shutil.move(temp_file, output_file)
+                save_success = True
+                print(f"  ✓ File berhasil disimpan via temp")
+                
+            except Exception as temp_err:
+                print(f"  ⚠️ Gagal save via temp: {temp_err}")
+                
+                # STRATEGY 3: Save with timestamp
+                try:
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    base_name = os.path.splitext(output_filename)[0]
+                    ext = os.path.splitext(output_filename)[1]
+                    output_filename_new = f"{base_name}_{timestamp}{ext}"
+                    output_file_new = os.path.join(output_path, output_filename_new)
+                    
+                    print(f"  ↳ Mencoba dengan nama alternatif: {output_filename_new}")
+                    wb.save(output_file_new)
+                    output_file = output_file_new
+                    save_success = True
+                    print(f"  ✓ File disimpan dengan nama alternatif")
+                    
+                except Exception as final_err:
+                    # STRATEGY 4: Keep in temp and inform user
+                    print(f"  ❌ Semua strategi save gagal!")
+                    print(f"  → File tersimpan di temp: {temp_file}")
+                    print(f"  → Silakan copy manual ke: {output_file}")
+                    output_file = temp_file
+        
+        # Close workbook if still open
+        if wb is not None:
+            wb.close()
+            wb = None
         
         elapsed = time.time() - start_time
-        print(f"✅ Selesai dalam {elapsed:.2f} detik")
-        print(f"   📁 Output: {output_file}")
-        print(f"   ✓ Formula SharePoint di 'RAFM Output Manual' tetap utuh")
         
-        return output_file
+        if save_success:
+            print(f"✅ Selesai dalam {elapsed:.2f} detik")
+            print(f"   📁 Output: {output_file}")
+            print(f"   ✓ Formula SharePoint di 'RAFM Output Manual' tetap utuh")
+        
+        return output_file if save_success else None
         
     except Exception as e:
         print(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
         return None
+    
+    finally:
+        # ALWAYS close workbook to prevent locks
+        if wb is not None:
+            try:
+                wb.close()
+            except:
+                pass
 
 
 def process_input_file(file_path):
@@ -332,9 +455,9 @@ def process_input_file(file_path):
 
 
 def main(input_path):
-    """Main entry point"""
+    """Main entry point - OPTIMIZED dengan ThreadPoolExecutor"""
     print("\n" + "="*60)
-    print("🔧 CONTROL 4 - RAFM OUTPUT PROCESSOR")
+    print("🔧 CONTROL 4 - RAFM OUTPUT PROCESSOR (TURBO MODE)")
     print("="*60)
     
     start_time = time.time()
@@ -358,21 +481,48 @@ def main(input_path):
 
     print(f"📊 Ditemukan {len(files)} file untuk diproses\n")
 
-    # Process files
-    for idx, f in enumerate(files, 1):
-        print(f"\n[{idx}/{len(files)}] Processing...")
-        try:
-            process_input_file(f)
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            import traceback
-            traceback.print_exc()
+    # OPTIMASI: Gunakan ThreadPoolExecutor untuk parallel processing
+    # Thread lebih cocok untuk I/O bound operations (baca/tulis Excel)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    # Determine optimal workers
+    max_workers = min(len(files), os.cpu_count() or 4, 8)  # Max 8 threads
+    
+    if len(files) == 1:
+        # Single file - langsung process
+        print(f"📋 Mode: Single file\n")
+        process_input_file(files[0])
+    else:
+        # Multiple files - parallel processing
+        print(f"⚡ Mode: Parallel processing ({max_workers} workers)\n")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_file = {
+                executor.submit(process_input_file, f): f 
+                for f in files
+            }
+            
+            # Process as they complete
+            for idx, future in enumerate(as_completed(future_to_file), 1):
+                file_path = future_to_file[future]
+                filename = os.path.basename(file_path)
+                
+                try:
+                    future.result()
+                    print(f"✅ [{idx}/{len(files)}] Completed: {filename}")
+                except Exception as e:
+                    print(f"❌ [{idx}/{len(files)}] Failed: {filename}")
+                    print(f"   Error: {e}")
+                    import traceback
+                    traceback.print_exc()
 
     # Summary
     elapsed = time.time() - start_time
     print("\n" + "="*60)
     print(f"⏲️  TOTAL WAKTU: {elapsed:.2f} detik")
     print(f"📁 Processed: {len(files)} file(s)")
+    print(f"⚡ Avg: {elapsed/len(files):.2f} detik/file")
     print("="*60)
 
 
